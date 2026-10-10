@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/app_controller.dart';
 import 'dashboard_screen.dart';
 import 'holding_screen.dart';
+import 'settings_screen.dart';
 import 'transactions_screen.dart';
 
 const _titles = ['Dashboard', 'Holdings', 'Transactions', 'Settings'];
@@ -45,7 +46,6 @@ class _HomeShellState extends State<HomeShell> {
     final destinations = [
       for (var i = 0; i < _titles.length; i++) (_icons[i], _titles[i]),
     ];
-    // Task 17 replaces the Settings placeholder.
     final body = switch (_index) {
       0 => DashboardScreen(
         controller: c,
@@ -56,7 +56,7 @@ class _HomeShellState extends State<HomeShell> {
         onOpenTransactions: () => setState(() => _index = 2),
       ),
       2 => TransactionsScreen(controller: c),
-      _ => Center(child: Text(_titles[_index])),
+      _ => SettingsScreen(controller: c),
     };
     return Scaffold(
       appBar: AppBar(

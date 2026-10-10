@@ -24,6 +24,12 @@ class PriceStore implements PriceLookup {
     ..._manual.values,
   ];
 
+  List<PriceObservation> get manualPrices =>
+      _manual.values.toList()..sort((a, b) {
+        final c = a.instrumentId.compareTo(b.instrumentId);
+        return c != 0 ? c : a.sessionDate.compareTo(b.sessionDate);
+      });
+
   Future<void> load() async {
     _fetched.clear();
     _manual.clear();

@@ -409,6 +409,59 @@ class AppController extends ChangeNotifier {
     return publishRecord(build(scan!.descriptor!.portfolioId));
   }
 
+  void _checkOpen() {
+    if (_folder == null || _publisher == null) {
+      throw StateError('The portfolio folder is not available.');
+    }
+  }
+
+  Future<CopyReport> exportTo(RecordFolder dest) async {
+    _checkOpen();
+    return _serial(() => copyLedger(_folder!, dest));
+  }
+
+  Future<CopyReport> restoreFrom(RecordFolder src) async {
+    _checkOpen();
+    if (scan?.readOnly ?? false) throw StateError(readOnlyMessage);
+    return _serial(() async {
+      try {
+        return await copyLedger(src, _folder!);
+      } finally {
+        await _rescanNow();
+      }
+    });
+  }
+
+  Future<int> republishMissing() async {
+    _checkOpen();
+    return _serial(() async {
+      try {
+        return await _scanner!.republishMissing(_publisher!);
+      } finally {
+        await _rescanNow();
+      }
+    });
+  }
+
+  Future<void> setManualPrice(
+    String instrumentId,
+    DateTime date,
+    Decimal price,
+  ) async {
+    _checkOpen();
+    await prices.setManual(instrumentId, date, price, nowUtc: _nowUtc());
+    notifyListeners();
+  }
+
+  Future<void> removeManualPrice(String instrumentId, DateTime date) async {
+    _checkOpen();
+    await prices.removeManual(instrumentId, date);
+    notifyListeners();
+  }
+
+  /// Sources the user can consent to, for the settings screen.
+  List<PriceSource> get sources => List.unmodifiable(_sources);
+
   Future<void> setPrivacy(bool on) async {
     await prefs.setPrivacyMode(on);
     notifyListeners();

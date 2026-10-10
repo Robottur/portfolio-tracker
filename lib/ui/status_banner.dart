@@ -97,7 +97,7 @@ class StatusBanner extends StatelessWidget {
         '${_two(l.hour)}:${_two(l.minute)}';
   }
 
-  static String _fmt(DateTime t) {
+  static String fmt(DateTime t) {
     final u = t.toUtc();
     return u.hour == 0 && u.minute == 0
         ? isoDate(u)
@@ -105,7 +105,7 @@ class StatusBanner extends StatelessWidget {
   }
 
   static String _range(DateTime a, DateTime b) =>
-      a == b ? _fmt(a) : '${_fmt(a)} – ${_fmt(b)}';
+      a == b ? fmt(a) : '${fmt(a)} – ${fmt(b)}';
 
   static String _age(DateTime t, DateTime today) {
     final q = istanbulToday(t.toUtc());

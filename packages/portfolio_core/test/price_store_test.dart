@@ -219,4 +219,24 @@ void main() {
       );
     }
   });
+
+  test('manualPrices lists only manual entries, sorted', () async {
+    await store.addFetched([obs('XIST:AAA', '10', date(2026, 10, 9))]);
+    await store.setManual(
+      'XIST:BBB',
+      date(2026, 10, 8),
+      Decimal.one,
+      nowUtc: testNow,
+    );
+    await store.setManual(
+      'XIST:AAA',
+      date(2026, 10, 9),
+      Decimal.parse('2'),
+      nowUtc: testNow,
+    );
+    expect(
+      [for (final o in store.manualPrices) o.instrumentId],
+      ['XIST:AAA', 'XIST:BBB'],
+    );
+  });
 }
