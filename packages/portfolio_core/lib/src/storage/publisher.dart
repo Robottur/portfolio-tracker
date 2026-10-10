@@ -14,6 +14,8 @@ class PublishException implements Exception {
   String toString() => 'PublishException($code)';
 }
 
+/// [publish] and [retryPending] must not run concurrently: temp files for the
+/// same record share a name.
 class Publisher {
   Publisher(this.folder, this.pending);
   final RecordFolder folder;
@@ -29,9 +31,10 @@ class Publisher {
       existing = await folder.readRecordFile(r.fileName);
     }
     if (existing != null && !_same(existing, r)) {
-      // Undecodable means incomplete; repairing is safe only because this
+      // Only bad_json can come from a cut-off write; every other failure
+      // means a complete document. Repairing is safe only because this
       // device holds the full record pending.
-      if (_decodes(existing, r.portfolioId)) {
+      if (!_isIncomplete(existing, r.portfolioId)) {
         throw PublishException('collision');
       }
       await folder.replaceRecordFile(r.fileName, bytes);
@@ -62,12 +65,12 @@ class Publisher {
     return n;
   }
 
-  bool _decodes(Uint8List b, String portfolioId) {
+  bool _isIncomplete(Uint8List b, String portfolioId) {
     try {
       LedgerRecord.decode(b, portfolioId: portfolioId);
-      return true;
-    } on RecordFormatException {
       return false;
+    } on RecordFormatException catch (e) {
+      return e.code == 'bad_json';
     }
   }
 

@@ -42,6 +42,7 @@ class DirBlobStore implements BlobStore {
     await dir.create(recursive: true);
     final tmp = File('${dir.path}/.$key.tmp');
     await tmp.writeAsBytes(bytes, flush: true);
+    // shortcut: the directory entry is not fsynced, so a power cut right after publish can lose the rename if pending and shared folder are on different filesystems, upgrade if that setup is needed.
     await tmp.rename(_file(key).path);
   }
 

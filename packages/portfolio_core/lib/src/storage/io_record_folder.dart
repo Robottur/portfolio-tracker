@@ -51,6 +51,7 @@ class IoRecordFolder implements RecordFolder {
     await _records.create(recursive: true);
     final tmp = File('${_records.path}/.$name.tmp');
     await tmp.writeAsBytes(bytes, flush: true);
+    // shortcut: the directory entry is not fsynced, so a power cut right after publish can lose the rename if pending and shared folder are on different filesystems, upgrade if that setup is needed.
     await tmp.rename(_record(name).path);
   }
 
@@ -64,6 +65,7 @@ class IoRecordFolder implements RecordFolder {
       await tmp.delete();
       return false;
     }
+    // shortcut: the directory entry is not fsynced, so a power cut right after publish can lose the rename if pending and shared folder are on different filesystems, upgrade if that setup is needed.
     await tmp.rename(target.path);
     return true;
   }

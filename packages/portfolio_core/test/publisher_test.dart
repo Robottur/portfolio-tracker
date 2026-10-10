@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:portfolio_core/portfolio_core.dart';
@@ -59,6 +60,41 @@ void main() {
     expect(await pending.keys(), [r.recordId]);
     expect(folder.records[r.fileName], isNot(r.encode()));
   });
+
+  for (final (label, bytes) in [
+    (
+      'another portfolio',
+      LedgerRecord.newUpsert(
+        portfolioId: '33333333-3333-4333-8333-333333333333',
+        deviceId: testDeviceId,
+        transaction: buy(on: DateTime.utc(2026, 1, 1)),
+        now: testNow,
+      ).encode(),
+    ),
+    (
+      'schema_version 99',
+      Uint8List.fromList(
+        utf8.encode(
+          utf8
+              .decode(_rec().encode())
+              .replaceFirst('"schema_version": 1', '"schema_version": 99'),
+        ),
+      ),
+    ),
+  ]) {
+    test('complete file with $label is a collision, left untouched', () async {
+      final r = _rec();
+      folder.records[r.fileName] = bytes;
+      await expectLater(
+        publisher.publish(r),
+        throwsA(
+          isA<PublishException>().having((e) => e.code, 'code', 'collision'),
+        ),
+      );
+      expect(folder.records[r.fileName], bytes);
+      expect(await pending.keys(), [r.recordId]);
+    });
+  }
 
   test('a truncated file under that name is repaired', () async {
     final r = _rec();
