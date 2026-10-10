@@ -141,4 +141,51 @@ void main() {
       throwsFormatException,
     );
   });
+
+  group('fromJson enforces structural rules', () {
+    final b = buy(on: date(2026, 1, 2)).toJson();
+    final s = split(on: date(2026, 1, 2)).toJson();
+    final d = dividend(on: date(2026, 1, 2)).toJson();
+    test('rejects invalid records', () {
+      expect(
+        () => Transaction.fromJson({...b, 'day_order': 0}),
+        throwsFormatException,
+      );
+      expect(
+        () => Transaction.fromJson({...s, 'ratio_numerator': -3}),
+        throwsFormatException,
+      );
+      expect(
+        () => Transaction.fromJson({...s, 'quantity': '1'}),
+        throwsFormatException,
+      );
+      expect(
+        () => Transaction.fromJson({...b, 'ratio_numerator': 2}),
+        throwsFormatException,
+      );
+      expect(
+        () => Transaction.fromJson({...b, 'note': 'x' * 2001}),
+        throwsFormatException,
+      );
+      final usd = Instrument.create(AssetClass.fx, 'USD').toJson();
+      expect(
+        () => Transaction.fromJson({...d, 'instrument': usd}),
+        throwsFormatException,
+      );
+    });
+    test('too many digits', () {
+      final t = Transaction.buy(
+        instrument: aaa(),
+        date: date(2026, 1, 2),
+        dayOrder: 1,
+        quantity: Decimal.parse('1.123456789'),
+        unitPrice: Decimal.one,
+        fees: Decimal.zero,
+      );
+      expect(
+        t.validate(today: today),
+        contains('quantity has too many digits'),
+      );
+    });
+  });
 }

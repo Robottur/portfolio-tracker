@@ -122,7 +122,27 @@ class Transaction {
       throw FormatException('note must be a string', note);
     }
     final n = note as String?;
-    return switch (type) {
+    const own = {
+      TxType.buy: {'quantity', 'unit_price', 'fees'},
+      TxType.sell: {'quantity', 'unit_price', 'fees'},
+      TxType.dividend: {'gross_amount', 'withholding', 'fees'},
+      TxType.split: {'ratio_numerator', 'ratio_denominator'},
+    };
+    const all = {
+      'quantity',
+      'unit_price',
+      'fees',
+      'gross_amount',
+      'withholding',
+      'ratio_numerator',
+      'ratio_denominator',
+    };
+    for (final f in all.difference(own[type]!)) {
+      if (j.containsKey(f)) {
+        throw FormatException('$f is not allowed for ${type.json}');
+      }
+    }
+    final t = switch (type) {
       TxType.buy || TxType.sell => Transaction._(
         type: type,
         effectiveDate: date,
@@ -153,6 +173,9 @@ class Transaction {
         note: n,
       ),
     };
+    final errors = t._structuralErrors();
+    if (errors.isNotEmpty) throw FormatException(errors.join('; '));
+    return t;
   }
 
   final TxType type;
@@ -167,9 +190,25 @@ class Transaction {
       grossAmount! - (withholding ?? Decimal.zero) - (fees ?? Decimal.zero);
 
   /// Messages are shown verbatim by the UI; all problems are collected.
-  List<String> validate({required DateTime today}) {
+  List<String> validate({required DateTime today}) => [
+    if (effectiveDate.isAfter(today)) 'effective_date is in the future',
+    ..._structuralErrors(),
+  ];
+
+  /// Everything except the future-date rule; fromJson enforces it too.
+  List<String> _structuralErrors() {
     final e = <String>[];
-    if (effectiveDate.isAfter(today)) e.add('effective_date is in the future');
+    void fits(String name, Decimal? v) {
+      if (v != null && (v.scale > 8 || v.precision - v.scale > 18)) {
+        e.add('$name has too many digits');
+      }
+    }
+
+    fits('quantity', quantity);
+    fits('unit_price', unitPrice);
+    fits('fees', fees);
+    fits('gross_amount', grossAmount);
+    fits('withholding', withholding);
     if (dayOrder < 1) e.add('day_order must be at least 1');
     if ((note?.length ?? 0) > 2000) {
       e.add('note is longer than 2000 characters');
