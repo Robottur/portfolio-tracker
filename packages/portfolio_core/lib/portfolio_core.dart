@@ -8,4 +8,8 @@ export 'src/ledger/reconcile.dart';
 export 'src/model/instrument.dart';
 export 'src/model/record.dart';
 export 'src/model/transaction.dart';
+export 'src/storage/blob_store.dart';
+export 'src/storage/io_record_folder.dart';
+export 'src/storage/publisher.dart';
+export 'src/storage/record_folder.dart';
 export 'src/strict_json.dart';
