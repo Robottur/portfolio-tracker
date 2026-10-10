@@ -89,10 +89,16 @@ class GoldSource implements PriceSource {
     final (gcChart, fxChart) = await _charts(from: from, to: to);
     final gc = yahooHistory(gcChart, id), fx = yahooHistory(fxChart, id);
     final received = _now();
+    // Today's bar is still forming; it is not a close.
+    final today = istanbulToday(received);
     final days =
         gc.keys
             .where(
-              (d) => fx.containsKey(d) && !d.isBefore(from) && !d.isAfter(to),
+              (d) =>
+                  fx.containsKey(d) &&
+                  !d.isBefore(from) &&
+                  !d.isAfter(to) &&
+                  d.isBefore(today),
             )
             .toList()
           ..sort();

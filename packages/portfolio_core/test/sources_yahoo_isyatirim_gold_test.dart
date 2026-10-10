@@ -135,6 +135,33 @@ void main() {
       }
     });
 
+    test('bad quote time next to a good instrument', () async {
+      final d = jsonDecode(fx('yahoo_thyao.json')) as Map<String, Object?>;
+      final meta =
+          (((d['chart'] as Map)['result'] as List).first as Map)['meta'] as Map;
+      meta['symbol'] = 'ASELS.IS';
+      meta['regularMarketTime'] = 99999999999999;
+      final s = YahooSource(
+        routes({
+          'ASELS.IS': () => json(jsonEncode(d)),
+          'THYAO.IS': () => json(fx('yahoo_thyao.json')),
+        }),
+        nowUtc: nowUtc,
+      );
+      final asels = Instrument.create(AssetClass.bistShare, 'ASELS');
+      final r = await s.latest([asels, thyao]);
+      expect(r.map((o) => o.instrumentId), ['XIST:THYAO']);
+    });
+
+    test('meta.symbol mismatch skips the instrument', () async {
+      final s = YahooSource(
+        routes({'ASELS.IS': () => json(fx('yahoo_thyao.json'))}),
+        nowUtc: nowUtc,
+      );
+      final asels = Instrument.create(AssetClass.bistShare, 'ASELS');
+      expect(s.latest([asels]), throwsA(isA<SourceException>()));
+    });
+
     test('closes is empty without a request', () async {
       final s = YahooSource(MockClient((_) => fail('network')), nowUtc: nowUtc);
       expect(
@@ -188,7 +215,7 @@ void main() {
         fx('html_block.html'),
         '{"ok":false}',
         '{"ok":true}',
-        '{"ok":true,"value":[{"HGDG_TARIH":"29-09-2026","HG_KAPANIS":0}]}',
+        '{"ok":true,"value":[{"HGDG_HS_KODU":"THYAO","HGDG_TARIH":"29-09-2026","HG_KAPANIS":0}]}',
       ]) {
         expect(
           src(() => json(body)).closes(thyao, from, to),
@@ -199,6 +226,14 @@ void main() {
         await src(() => json('{"ok":true,"value":[]}')).closes(thyao, from, to),
         isEmpty,
       );
+    });
+
+    test('rows of another symbol are skipped', () async {
+      final d = jsonDecode(fx('isyatirim_thyao.json')) as Map;
+      ((d['value'] as List).first as Map)['HGDG_HS_KODU'] = 'ASELS';
+      final r = await src(() => json(jsonEncode(d))).closes(thyao, from, to);
+      expect(r, hasLength(8));
+      expect(r.first.sessionDate, DateTime.utc(2026, 9, 30));
     });
 
     test('latest is empty', () async {
@@ -240,6 +275,77 @@ void main() {
         nowUtc: nowUtc,
       );
       expect(s.latest([gram]), throwsA(isA<SourceException>()));
+    });
+
+    String hist(List<Object?> ts, List<Object?> cl) => jsonEncode({
+      'chart': {
+        'result': [
+          {
+            'meta': {},
+            'timestamp': ts,
+            'indicators': {
+              'quote': [
+                {'close': cl},
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    test('closes request starts one day before from', () async {
+      final log = <Uri>[];
+      final s = GoldSource(
+        routes({'chart': () => json(hist([], []))}, log),
+        nowUtc: nowUtc,
+      );
+      await s.closes(
+        gram,
+        DateTime.utc(2026, 9, 29),
+        DateTime.utc(2026, 10, 9),
+      );
+      final from = DateTime.utc(2026, 9, 28).millisecondsSinceEpoch ~/ 1000;
+      expect(
+        log.map((u) => u.queryParameters['period1']),
+        everyElement('$from'),
+      );
+    });
+
+    test('closes exclude today and keep the later bar of a date', () async {
+      // 2026-10-09 08:00Z and 10:00Z share an Istanbul date; 10-10 is today.
+      final t1 = DateTime.utc(2026, 10, 9, 8).millisecondsSinceEpoch ~/ 1000;
+      final t2 = DateTime.utc(2026, 10, 9, 10).millisecondsSinceEpoch ~/ 1000;
+      final t3 = DateTime.utc(2026, 10, 10, 8).millisecondsSinceEpoch ~/ 1000;
+      final s = GoldSource(
+        routes({
+          'GC=F': () => json(hist([t1, t2, t3], [4000.0, 4100.0, 4200.0])),
+          'USDTRY=X': () => json(hist([t1, t2, t3], [40.0, 41.0, 42.0])),
+        }),
+        nowUtc: nowUtc,
+      );
+      final r = await s.closes(
+        gram,
+        DateTime.utc(2026, 10, 9),
+        DateTime.utc(2026, 10, 10),
+      );
+      expect(r.map((o) => o.sessionDate), [DateTime.utc(2026, 10, 9)]);
+      expect(
+        r.single.price,
+        divide(Decimal.parse('4100') * Decimal.parse('41'), div),
+      );
+    });
+
+    test('non-int history timestamp is a SourceException', () async {
+      final s = GoldSource(
+        routes({
+          'chart': () => json(hist([1.5e9], [1.0])),
+        }),
+        nowUtc: nowUtc,
+      );
+      expect(
+        s.closes(gram, DateTime.utc(2026, 9, 1), DateTime.utc(2026, 10, 1)),
+        throwsA(isA<SourceException>()),
+      );
     });
 
     test('closes join on Istanbul date', () async {

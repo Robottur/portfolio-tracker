@@ -42,4 +42,17 @@ void main() {
     allowed.add('a.example');
     expect((await c.get(u)).statusCode, 200);
   });
+
+  test('redirects are not followed behind the gate', () async {
+    bool? follow;
+    final c = ConsentClient(
+      MockClient((r) async {
+        follow = r.followRedirects;
+        return http.Response('', 302);
+      }),
+      () => {'a.example'},
+    );
+    await c.get(Uri.parse('https://a.example/x'));
+    expect(follow, isFalse);
+  });
 }

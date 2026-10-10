@@ -71,7 +71,9 @@ class IsYatirimSource implements PriceSource {
     final received = _now();
     return [
       for (final row in body['value'] as List)
-        if (row is Map)
+        if (row is Map && row['HGDG_HS_KODU'] != instrument.code)
+          ...const <PriceObservation>[] // another symbol's row
+        else if (row is Map)
           PriceObservation(
             instrumentId: instrument.id,
             // HG_KAPANIS is unadjusted; HGDG_KAPANIS is split-adjusted.

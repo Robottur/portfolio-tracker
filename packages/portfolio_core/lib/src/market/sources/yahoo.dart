@@ -8,8 +8,12 @@ import '../source.dart';
 
 const yahooHost = 'query1.finance.yahoo.com';
 
-DateTime _epoch(int s) =>
-    DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true);
+DateTime _epoch(Object? s, String sourceId) {
+  if (s is! int || s <= 0 || s >= 100000000000) {
+    throw SourceException(sourceId, 'Bad timestamp');
+  }
+  return DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true);
+}
 
 /// Returns `chart.result[0]`; an error object, null or empty result throws.
 Future<Map<String, Object?>> fetchYahooChart(
@@ -22,7 +26,9 @@ Future<Map<String, Object?>> fetchYahooChart(
 }) async {
   final q = from != null && to != null
       ? {
-          'period1': '${from.millisecondsSinceEpoch ~/ 1000}',
+          // USDTRY=X daily bars are stamped 23:00Z the day before; start a day early.
+          'period1':
+              '${from.subtract(const Duration(days: 1)).millisecondsSinceEpoch ~/ 1000}',
           // inclusive of the end day
           'period2':
               '${to.add(const Duration(days: 1)).millisecondsSinceEpoch ~/ 1000}',
@@ -47,18 +53,20 @@ Future<Map<String, Object?>> fetchYahooChart(
 ({Decimal price, DateTime time}) yahooQuote(
   Map<String, Object?> chart,
   String currency,
-  String sourceId,
-) {
+  String sourceId, {
+  String? symbol,
+}) {
   final meta = chart['meta'];
   if (meta is! Map) throw SourceException(sourceId, 'No meta');
   if (meta['currency'] != currency) {
     throw SourceException(sourceId, 'Unexpected currency ${meta['currency']}');
   }
-  final t = meta['regularMarketTime'];
-  if (t is! int) throw SourceException(sourceId, 'No quote time');
+  if (symbol != null && meta['symbol'] != symbol) {
+    throw SourceException(sourceId, 'Unexpected symbol ${meta['symbol']}');
+  }
   return (
     price: priceFromJson(meta['regularMarketPrice'], sourceId),
-    time: _epoch(t),
+    time: _epoch(meta['regularMarketTime'], sourceId),
   );
 }
 
@@ -76,11 +84,17 @@ Map<DateTime, Decimal> yahooHistory(
   if (ts is! List || close is! List || ts.length != close.length) {
     throw SourceException(sourceId, 'Malformed history');
   }
-  return {
-    for (var i = 0; i < ts.length; i++)
-      if (close[i] != null)
-        istanbulToday(_epoch(ts[i] as int)): priceFromJson(close[i], sourceId),
-  };
+  final out = <DateTime, Decimal>{};
+  final stamp = <DateTime, DateTime>{};
+  for (var i = 0; i < ts.length; i++) {
+    if (close[i] == null) continue;
+    final t = _epoch(ts[i], sourceId), d = istanbulToday(t);
+    // Two bars on one Istanbul date: the later timestamp wins.
+    if (stamp[d] != null && !t.isAfter(stamp[d]!)) continue;
+    stamp[d] = t;
+    out[d] = priceFromJson(close[i], sourceId);
+  }
+  return out;
 }
 
 class YahooSource implements PriceSource {
@@ -126,6 +140,7 @@ class YahooSource implements PriceSource {
           await fetchYahooChart(_c, sym, timeout: timeout),
           'TRY',
           id,
+          symbol: sym,
         );
         out.add(
           PriceObservation(

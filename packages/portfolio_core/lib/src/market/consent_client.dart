@@ -20,6 +20,8 @@ class ConsentClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) {
     final host = request.url.host;
     if (!_allowedHosts().contains(host)) throw ConsentDeniedException(host);
+    // A redirect would reach a host this gate never saw; 3xx becomes an error.
+    request.followRedirects = false;
     return _inner.send(request);
   }
 
