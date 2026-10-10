@@ -108,7 +108,11 @@ class BtcTurkSource implements PriceSource {
     final out = <PriceObservation>[];
     for (final row in rows) {
       if (row is! Map || row['pairSymbol'] != pair) continue;
-      final d = istanbulToday(_ms(row['time'], id));
+      final t = _ms(row['time'], id);
+      final d = istanbulToday(t);
+      // Bars open at 00:00 UTC; between 21:00Z and 24:00Z the Istanbul date
+      // has rolled but the bar is still forming.
+      if (t.add(const Duration(days: 1)).isAfter(received)) continue;
       // Today's bar is still forming; it is not a close.
       if (d.isBefore(from) || d.isAfter(to) || !d.isBefore(today)) continue;
       out.add(

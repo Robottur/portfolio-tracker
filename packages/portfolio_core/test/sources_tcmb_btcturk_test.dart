@@ -42,8 +42,7 @@ void main() {
       expect(r[0].kind, PriceKind.close);
       expect(r[0].quoteTime, isNull);
       expect(r[0].sessionDate, DateTime.utc(2026, 10, 9));
-      expect(r[1].price, lessThan(Decimal.one));
-      expect(r[1].price * Decimal.fromInt(100), isNot(Decimal.zero));
+      expect(r[1].price, Decimal.parse('0.309677'));
     });
 
     test('latest: none present -> empty', () async {
@@ -109,6 +108,26 @@ void main() {
       expect((await s.latest([usd, jpy])).map((o) => o.instrumentId), [
         'FX:JPY',
       ]);
+    });
+
+    test('malformed rate on another currency does not hide USD', () async {
+      final body = fx('tcmb_09102026.xml').replaceFirst(
+        '<ForexBuying>30.9677</ForexBuying>',
+        '<ForexBuying>abc</ForexBuying>',
+      );
+      final s = TcmbSource(
+        routes({'today.xml': () => ok(body)}),
+        nowUtc: nowUtc,
+      );
+      expect((await s.latest([usd])).single.price, Decimal.parse('49.1274'));
+    });
+
+    test('future-dated bulletin is rejected', () async {
+      final s = TcmbSource(
+        routes({'today.xml': () => ok(fx('tcmb_09102026.xml'))}),
+        nowUtc: () => DateTime.utc(2026, 10, 8, 12),
+      );
+      await expectLater(s.latest([usd]), throwsA(isA<SourceException>()));
     });
 
     test('429 surfaces retryAfter', () async {
@@ -207,6 +226,19 @@ void main() {
       ]);
       expect(r.last.price, Decimal.parse('4069516'));
       expect(r.last.kind, PriceKind.close);
+    });
+
+    test('closes: still-forming UTC bar after 21:00Z is not a close', () async {
+      final s = BtcTurkSource(
+        routes({'ohlc': () => ok(fx('btcturk_ohlc.json'))}),
+        nowUtc: () => DateTime.utc(2026, 10, 10, 22),
+      );
+      final r = await s.closes(
+        btc,
+        DateTime.utc(2026, 10, 5),
+        DateTime.utc(2026, 10, 10),
+      );
+      expect(r.last.sessionDate, DateTime.utc(2026, 10, 9));
     });
 
     test('closes: wrong pairSymbol rows skipped', () async {

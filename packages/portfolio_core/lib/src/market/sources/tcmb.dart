@@ -84,7 +84,14 @@ class TcmbSource implements PriceSource {
       );
       if (code == null || buying.isEmpty || rates.containsKey(code)) continue;
       if (unit == null || unit <= Decimal.zero) continue;
-      rates[code] = divide(priceFromString(buying, id), unit);
+      try {
+        rates[code] = divide(priceFromString(buying, id), unit);
+      } on SourceException {
+        continue; // one bad currency must not hide the others
+      }
+    }
+    if (day.isAfter(istanbulToday(_now()))) {
+      throw SourceException(id, 'Bulletin dated in the future');
     }
     return (day, rates);
   }
