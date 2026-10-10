@@ -19,9 +19,13 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> {
   String? _error;
+  bool _busy = false;
 
   Future<void> _open({String? createName}) async {
-    setState(() => _error = null);
+    setState(() {
+      _error = null;
+      _busy = true;
+    });
     try {
       final p = await widget.pick();
       if (p == null) return;
@@ -34,6 +38,8 @@ class _SetupScreenState extends State<SetupScreen> {
       if (mounted) {
         setState(() => _error = e is StateError ? e.message : e.toString());
       }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -75,17 +81,24 @@ class _SetupScreenState extends State<SetupScreen> {
                   const Text('The portfolio folder is no longer accessible.'),
                   const SizedBox(height: 8),
                   FilledButton(
-                    onPressed: _open,
+                    onPressed: _busy ? null : _open,
                     child: const Text('Choose folder again'),
                   ),
-                ] else ...[
+                  const SizedBox(height: 8),
+                ],
+                if (lost)
+                  OutlinedButton(
+                    onPressed: _busy ? null : _create,
+                    child: const Text('Create portfolio'),
+                  )
+                else ...[
                   FilledButton(
-                    onPressed: _create,
+                    onPressed: _busy ? null : _create,
                     child: const Text('Create portfolio'),
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton(
-                    onPressed: _open,
+                    onPressed: _busy ? null : _open,
                     child: const Text('Open existing portfolio'),
                   ),
                 ],

@@ -7,7 +7,7 @@ class PrivacyScope extends InheritedWidget {
 
   static bool maskedOf(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<PrivacyScope>()?.masked ??
-      false;
+      true; // fail closed
 
   @override
   bool updateShouldNotify(PrivacyScope old) => masked != old.masked;

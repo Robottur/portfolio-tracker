@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:asset_portfolio/app/app_controller.dart';
 import 'package:asset_portfolio/app/device_prefs.dart';
 import 'package:asset_portfolio/main.dart';
+import 'package:asset_portfolio/ui/home_shell.dart';
+import 'package:asset_portfolio/ui/privacy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
@@ -51,5 +53,31 @@ void main() {
     expect(File('${shared.path}/portfolio.json').existsSync(), isTrue);
     expect(find.text('Dashboard'), findsWidgets);
     expect(find.byTooltip('Privacy mode'), findsOneWidget);
+  });
+
+  testWidgets('dialogs above the home route are masked in privacy mode', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final tmp = Directory.systemTemp.createTempSync('dlg');
+    addTearDown(() => tmp.deleteSync(recursive: true));
+    final c = (await tester.runAsync(() async {
+      final c = AppController(
+        prefs: await DevicePrefs.load(),
+        privateDir: tmp,
+        network: MockClient((_) async => fail('network')),
+      );
+      await c.openFolder(MemoryRecordFolder(), 'mem', createName: 'Main');
+      await c.setPrivacy(true);
+      return c;
+    }))!;
+    await tester.pumpWidget(AssetPortfolioApp(controller: c));
+    showDialog<void>(
+      context: tester.element(find.byType(HomeShell)),
+      builder: (_) => const AlertDialog(content: Amount('2,700.00')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('•••••'), findsOneWidget);
+    expect(find.text('2,700.00'), findsNothing);
   });
 }

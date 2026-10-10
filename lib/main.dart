@@ -6,6 +6,7 @@ import 'app/app_controller.dart';
 import 'app/device_prefs.dart';
 import 'platform/folder_access.dart';
 import 'ui/home_shell.dart';
+import 'ui/privacy.dart';
 import 'ui/setup_screen.dart';
 
 Future<void> main() async {
@@ -15,16 +16,7 @@ Future<void> main() async {
     privateDir: await getApplicationSupportDirectory(),
     network: http.Client(),
   );
-  final saved = controller.prefs.folderLocation;
-  if (saved != null) {
-    final folder = await reopenRecordFolder(saved);
-    try {
-      if (folder == null) throw StateError('Folder could not be read');
-      await controller.openFolder(folder, saved);
-    } on Object {
-      controller.markFolderUnavailable();
-    }
-  }
+  await controller.restore(reopenRecordFolder);
   runApp(AssetPortfolioApp(controller: controller));
 }
 
@@ -41,6 +33,12 @@ class AssetPortfolioApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'Asset Portfolio',
+    // Above the Navigator, so dialogs and pushed routes are masked too.
+    builder: (_, child) => ListenableBuilder(
+      listenable: controller,
+      builder: (_, _) =>
+          PrivacyScope(masked: controller.privacyMode, child: child!),
+    ),
     theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
     home: ListenableBuilder(
       listenable: controller,

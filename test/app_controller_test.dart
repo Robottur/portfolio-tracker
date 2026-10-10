@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:asset_portfolio/app/app_controller.dart';
 import 'package:asset_portfolio/app/device_prefs.dart';
+import 'package:decimal/decimal.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:portfolio_core/portfolio_core.dart';
@@ -18,8 +20,8 @@ void main() {
   });
   tearDown(() => tmp.deleteSync(recursive: true));
 
-  Future<AppController> make() async => AppController(
-    prefs: await DevicePrefs.load(),
+  Future<AppController> make({DevicePrefs? prefs}) async => AppController(
+    prefs: prefs ?? await DevicePrefs.load(),
     privateDir: tmp,
     network: MockClient((_) async {
       calls++;
@@ -102,6 +104,138 @@ void main() {
     final a = (await DevicePrefs.load()).deviceId;
     expect((await DevicePrefs.load()).deviceId, a);
   });
+
+  test(
+    'manual prices persist across controllers with no source enabled',
+    () async {
+      final f = MemoryRecordFolder();
+      final day = DateTime.utc(2026, 10, 9);
+      final c1 = await make();
+      await c1.openFolder(f, 'mem', createName: 'Main');
+      await c1.prices.setManual(
+        'XIST:AAA',
+        day,
+        Decimal.parse('5'),
+        nowUtc: DateTime.utc(2026, 10, 10),
+      );
+      final c2 = await make();
+      await c2.openFolder(f, 'mem');
+      expect(
+        c2.prices.closeOnOrBefore('XIST:AAA', day)?.price,
+        Decimal.parse('5'),
+      );
+      await c2.prices.setManual(
+        'XIST:BBB',
+        day,
+        Decimal.parse('7'),
+        nowUtc: DateTime.utc(2026, 10, 10),
+      );
+      final c3 = await make();
+      await c3.openFolder(f, 'mem');
+      expect(c3.prices.closeOnOrBefore('XIST:AAA', day), isNotNull);
+      expect(c3.prices.closeOnOrBefore('XIST:BBB', day), isNotNull);
+    },
+  );
+
+  LedgerRecord rec(AppController c) => LedgerRecord.newUpsert(
+    portfolioId: c.scan!.descriptor!.portfolioId,
+    deviceId: '11111111-1111-4111-8111-111111111111',
+    transaction: Transaction.buy(
+      instrument: Instrument.create(AssetClass.bistShare, 'AAA'),
+      date: DateTime.utc(2026, 10, 1),
+      dayOrder: 1,
+      quantity: Decimal.one,
+      unitPrice: Decimal.one,
+      fees: Decimal.zero,
+    ),
+    now: DateTime.utc(2026, 10, 1),
+  );
+
+  test('resume and publish never run folder calls concurrently', () async {
+    final c = await make();
+    final f = _Flaky();
+    await c.openFolder(f, 'mem', createName: 'Main');
+    f.slow = true;
+    final a = c.onResume();
+    final b = c.onResume();
+    expect(identical(a, b), isTrue);
+    await Future.wait([a, c.publishRecord(rec(c)), c.publishRecord(rec(c))]);
+    expect(f.maxActive, 1);
+    expect(c.transactions, hasLength(2));
+  });
+
+  test(
+    'resume on an unreadable folder records access lost, no throw',
+    () async {
+      final c = await make();
+      final f = _Flaky();
+      await c.openFolder(f, 'mem', createName: 'Main');
+      f.broken = true;
+      await expectLater(
+        c.publishRecord(rec(c)),
+        throwsA(anything),
+      ); // stays pending
+      await c.onResume();
+      expect(c.folderAccessLost, isTrue);
+    },
+  );
+
+  test('create into a folder that has records is refused', () async {
+    final c = await make();
+    final f = MemoryRecordFolder()..records['x.json'] = Uint8List(1);
+    await expectLater(
+      c.openFolder(f, 'mem', createName: 'Main'),
+      throwsA(
+        isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          'This folder already contains records. '
+              'Open it as an existing portfolio instead.',
+        ),
+      ),
+    );
+    expect(f.descriptor, isNull);
+  });
+
+  test('a failed preference write surfaces from the controller', () async {
+    final c = await make(
+      prefs: _FailPrefs(await SharedPreferences.getInstance()),
+    );
+    await expectLater(c.setSourceEnabled('tcmb', true), throwsStateError);
+    expect(c.prefs.enabledSources, isEmpty);
+    expect(calls, 0);
+  });
+}
+
+class _FailPrefs extends DevicePrefs {
+  _FailPrefs(super.p);
+  @override
+  Future<void> setEnabledSources(Set<String> v) async =>
+      throw StateError('Could not save settings');
+}
+
+class _Flaky extends MemoryRecordFolder {
+  bool broken = false, slow = false;
+  int active = 0, maxActive = 0;
+
+  Future<T> _t<T>(T Function() f) async {
+    if (broken) throw const FileSystemException('gone');
+    active++;
+    if (active > maxActive) maxActive = active;
+    if (slow) await Future<void>.delayed(const Duration(milliseconds: 5));
+    active--;
+    return f();
+  }
+
+  @override
+  Future<List<String>> listRecordFiles() => _t(() => records.keys.toList());
+  @override
+  Future<Uint8List?> readRecordFile(String name) => _t(() => records[name]);
+  @override
+  Future<Uint8List?> readDescriptor() => _t(() => descriptor);
+  @override
+  Future<bool> createRecordFile(String name, Uint8List bytes) =>
+      _t(() => records.putIfAbsent(name, () => bytes) == bytes);
 }
 
 class _Broken extends MemoryRecordFolder {

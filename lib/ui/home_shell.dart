@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
-import 'privacy.dart';
 
 const _titles = ['Dashboard', 'Holdings', 'Transactions', 'Settings'];
 const _icons = [
@@ -45,51 +44,46 @@ class _HomeShellState extends State<HomeShell> {
     ];
     // Tasks 15-17 replace these placeholder bodies.
     final body = Center(child: Text(_titles[_index]));
-    return PrivacyScope(
-      masked: c.privacyMode,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(c.scan?.descriptor?.name ?? 'Asset Portfolio'),
-          actions: [
-            IconButton(
-              tooltip: 'Privacy mode',
-              icon: Icon(
-                c.privacyMode ? Icons.visibility_off : Icons.visibility,
-              ),
-              onPressed: () => c.setPrivacy(!c.privacyMode),
-            ),
-          ],
-        ),
-        body: wide
-            ? Row(
-                children: [
-                  NavigationRail(
-                    selectedIndex: _index,
-                    labelType: NavigationRailLabelType.all,
-                    onDestinationSelected: (i) => setState(() => _index = i),
-                    destinations: [
-                      for (final (icon, label) in destinations)
-                        NavigationRailDestination(
-                          icon: Icon(icon),
-                          label: Text(label),
-                        ),
-                    ],
-                  ),
-                  Expanded(child: body),
-                ],
-              )
-            : body,
-        bottomNavigationBar: wide
-            ? null
-            : NavigationBar(
-                selectedIndex: _index,
-                onDestinationSelected: (i) => setState(() => _index = i),
-                destinations: [
-                  for (final (icon, label) in destinations)
-                    NavigationDestination(icon: Icon(icon), label: label),
-                ],
-              ),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(c.scan?.descriptor?.name ?? 'Asset Portfolio'),
+        actions: [
+          IconButton(
+            tooltip: 'Privacy mode',
+            icon: Icon(c.privacyMode ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => c.setPrivacy(!c.privacyMode),
+          ),
+        ],
       ),
+      body: wide
+          ? Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _index,
+                  labelType: NavigationRailLabelType.all,
+                  onDestinationSelected: (i) => setState(() => _index = i),
+                  destinations: [
+                    for (final (icon, label) in destinations)
+                      NavigationRailDestination(
+                        icon: Icon(icon),
+                        label: Text(label),
+                      ),
+                  ],
+                ),
+                Expanded(child: body),
+              ],
+            )
+          : body,
+      bottomNavigationBar: wide
+          ? null
+          : NavigationBar(
+              selectedIndex: _index,
+              onDestinationSelected: (i) => setState(() => _index = i),
+              destinations: [
+                for (final (icon, label) in destinations)
+                  NavigationDestination(icon: Icon(icon), label: label),
+              ],
+            ),
     );
   }
 }
