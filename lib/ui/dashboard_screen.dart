@@ -49,14 +49,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     builder: (context, _) {
       final c = widget.controller;
       final prices = c.prices;
-      final v = valueHoldings(c.replayNow.positions, prices.latest);
-      final r = c.period(_period);
+      final v = valueHoldings(c.displayReplay.positions, prices.latest);
+      final r = c.displayPeriod(_period);
       final enabled = c.prefs.enabledSources.isNotEmpty;
       // shortcut: weekends only; holidays need an exchange calendar
       final closedDay =
           c.today.weekday == DateTime.saturday ||
           c.today.weekday == DateTime.sunday;
-      final entries = holdingEntries(c);
+      final entries = c.displayIncomplete
+          ? <HoldingEntry>[]
+          : holdingEntries(c);
       final byClass = <AssetClass, List<HoldingEntry>>{};
       for (final e in entries) {
         byClass.putIfAbsent(e.position.instrument.assetClass, () => []).add(e);
@@ -67,7 +69,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           StatusBanner(
             controller: c,
-            valuation: v,
             onOpenTransactions: widget.onOpenTransactions,
           ),
           Align(
@@ -82,7 +83,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          if (v.total != null) ...[
+          if (c.displayIncomplete)
+            Text(
+              'Unavailable — ledger has ${c.issueCount} '
+              '${c.issueCount == 1 ? 'issue' : 'issues'}',
+              style: big,
+            )
+          else if (v.total != null) ...[
             const Text('Portfolio value'),
             Amount('${formatTry(v.total!)} TRY', style: big),
           ] else ...[
@@ -106,7 +113,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             for (final o in v.pricesUsed.values)
               Text('${o.instrumentId}: ${stamp(o)}'),
           ],
-          if (r.unavailableReason != null)
+          if (c.displayIncomplete)
+            const SizedBox.shrink()
+          else if (r.unavailableReason != null)
             Text('Gain unavailable: ${r.unavailableReason}')
           else ...[
             if (r.gain != null) Amount(signedTry(r.gain!), style: big),
@@ -119,7 +128,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (r.sinceInception)
             const Text('Since inception; shorter than selected period.'),
           const Divider(),
-          if (entries.isEmpty) const Text('No holdings'),
+          if (entries.isEmpty && !c.displayIncomplete)
+            const Text('No holdings'),
           for (final cls in byClass.entries) ...[
             Text(cls.key.json, style: Theme.of(context).textTheme.titleMedium),
             for (final e in cls.value)

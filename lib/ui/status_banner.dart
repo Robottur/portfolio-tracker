@@ -39,20 +39,18 @@ class StatusBanner extends StatelessWidget {
   const StatusBanner({
     super.key,
     required this.controller,
-    required this.valuation,
     required this.onOpenTransactions,
   });
 
   final AppController controller;
-  final Valuation valuation;
   final VoidCallback onOpenTransactions;
 
   @override
   Widget build(BuildContext context) {
     final c = controller;
     final scan = c.scan;
-    final issues =
-        (scan?.ledger.issues.length ?? 0) + (scan?.fileIssues.length ?? 0);
+    final valuation = valueHoldings(c.displayReplay.positions, c.prices.latest);
+    final issues = c.issueCount;
     final prev = c.lastValidScan;
     final times = [
       for (final o in valuation.pricesUsed.values) o.quoteTime ?? o.sessionDate,
@@ -99,15 +97,19 @@ class StatusBanner extends StatelessWidget {
         '${_two(l.hour)}:${_two(l.minute)}';
   }
 
-  static String _fmt(DateTime t) => t.isUtc && t.hour == 0 && t.minute == 0
-      ? isoDate(t)
-      : '${isoDate(t)} ${_two(t.hour)}:${_two(t.minute)} UTC';
+  static String _fmt(DateTime t) {
+    final u = t.toUtc();
+    return u.hour == 0 && u.minute == 0
+        ? isoDate(u)
+        : '${isoDate(u)} ${_two(u.hour)}:${_two(u.minute)} UTC';
+  }
 
   static String _range(DateTime a, DateTime b) =>
       a == b ? _fmt(a) : '${_fmt(a)} – ${_fmt(b)}';
 
   static String _age(DateTime t, DateTime today) {
-    final d = daysBetween(DateTime.utc(t.year, t.month, t.day), today);
+    final q = istanbulToday(t.toUtc());
+    final d = daysBetween(q, today);
     return d <= 0 ? 'today' : '$d ${d == 1 ? 'day' : 'days'} old';
   }
 }

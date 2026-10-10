@@ -51,7 +51,10 @@ class _HomeShellState extends State<HomeShell> {
         controller: c,
         onOpenTransactions: () => setState(() => _index = 2),
       ),
-      1 => HoldingsView(controller: c),
+      1 => HoldingsView(
+        controller: c,
+        onOpenTransactions: () => setState(() => _index = 2),
+      ),
       2 => TransactionsScreen(controller: c),
       _ => Center(child: Text(_titles[_index])),
     };

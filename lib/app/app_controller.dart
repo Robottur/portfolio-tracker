@@ -70,6 +70,30 @@ class AppController extends ChangeNotifier {
   List<Transaction> get transactions => scan?.ledger.transactions ?? const [];
   ReplayResult get replayNow => replay(transactions, through: today);
 
+  /// What the UI shows: the last complete scan while the current one is broken.
+  List<Transaction> get displayTransactions =>
+      scan != null && !scan!.complete && lastValidScan != null
+      ? lastValidScan!.ledger.transactions
+      : transactions;
+  ReplayResult get displayReplay => replay(displayTransactions, through: today);
+
+  PeriodResult displayPeriod(Period p) => computePeriod(
+    period: p,
+    today: today,
+    transactions: displayTransactions,
+    prices: prices,
+    calendar: _calendar,
+  );
+
+  int get issueCount =>
+      (scan?.ledger.issues.length ?? 0) +
+      (scan?.fileIssues.length ?? 0) +
+      displayReplay.issues.length;
+
+  bool get displayIncomplete =>
+      (scan != null && !scan!.complete && lastValidScan == null) ||
+      !displayReplay.valid;
+
   TradingCalendar get _calendar =>
       TradingCalendar(prices.knownBistTradingDays());
 

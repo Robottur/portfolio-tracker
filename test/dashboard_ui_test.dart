@@ -13,9 +13,30 @@ import 'package:shared_preferences/shared_preferences.dart';
 Instrument _i(String s) => Instrument.create(AssetClass.bistShare, s);
 Decimal _d(String s) => Decimal.parse(s);
 
+Transaction _buy(String sym, int day, String q, String p) => Transaction.buy(
+  instrument: _i(sym),
+  date: DateTime.utc(2026, 10, day),
+  dayOrder: 10,
+  quantity: _d(q),
+  unitPrice: _d(p),
+  fees: Decimal.zero,
+);
+
+Transaction _sell(String sym, int day, String q, String p) => Transaction.sell(
+  instrument: _i(sym),
+  date: DateTime.utc(2026, 10, day),
+  dayOrder: 20,
+  quantity: _d(q),
+  unitPrice: _d(p),
+  fees: Decimal.zero,
+);
+
+const _conflictId = '33333333-3333-4333-8333-333333333333';
+
 void main() {
   late Directory tmp;
   late AppController c;
+  late MemoryRecordFolder folder;
   final now = DateTime.utc(2026, 10, 10, 12); // a Saturday
 
   setUp(() {
@@ -28,6 +49,7 @@ void main() {
     WidgetTester tester, {
     bool second = false,
     double width = 700,
+    String sellPrice = '18',
   }) async {
     tester.view.physicalSize = Size(width, 1400);
     tester.view.devicePixelRatio = 1;
@@ -39,40 +61,14 @@ void main() {
         network: MockClient((_) async => fail('network')),
         nowUtc: () => now,
       );
-      await c.openFolder(MemoryRecordFolder(), 'mem', createName: 'Main');
-      // Example A: buy 200 @15, sell 50 @18 -> 150 held, cost 2250, realized 150.
-      await c.addTransaction(
-        Transaction.buy(
-          instrument: _i('AAA'),
-          date: DateTime.utc(2026, 10, 1),
-          dayOrder: 10,
-          quantity: _d('200'),
-          unitPrice: _d('15'),
-          fees: Decimal.zero,
-        ),
-      );
-      await c.addTransaction(
-        Transaction.sell(
-          instrument: _i('AAA'),
-          date: DateTime.utc(2026, 10, 5),
-          dayOrder: 10,
-          quantity: _d('50'),
-          unitPrice: _d('18'),
-          fees: Decimal.zero,
-        ),
-      );
-      if (second) {
-        await c.addTransaction(
-          Transaction.buy(
-            instrument: _i('BBB'),
-            date: DateTime.utc(2026, 10, 2),
-            dayOrder: 10,
-            quantity: _d('10'),
-            unitPrice: _d('5'),
-            fees: Decimal.zero,
-          ),
-        );
-      }
+      folder = MemoryRecordFolder();
+      await c.openFolder(folder, 'mem', createName: 'Main');
+      // Example A: avg cost 15, 150 held, cost 2250, realized 150.
+      Future<void> tx(Transaction t) => c.addTransaction(t);
+      await tx(_buy('AAA', 1, '100', '10'));
+      await tx(_buy('AAA', 2, '100', '20'));
+      await tx(_sell('AAA', 5, '50', sellPrice));
+      if (second) await tx(_buy('BBB', 3, '10', '5'));
       await c.prices.setManual('XIST:AAA', c.today, _d('18'), nowUtc: now);
     });
     await tester.pumpWidget(AssetPortfolioApp(controller: c));
@@ -95,7 +91,7 @@ void main() {
     await tester.tap(find.textContaining('AAA').first);
     await tester.pumpAndSettle();
     expect(find.text('15'), findsOneWidget);
-    expect(find.text('150.00'), findsOneWidget);
+    expect(find.textContaining('150.00'), findsOneWidget);
   });
 
   testWidgets('privacy mode masks amounts', (tester) async {
@@ -124,5 +120,64 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Average cost'), findsOneWidget);
     expect(find.text('Realized gain'), findsOneWidget);
+  });
+
+  Future<void> inject(WidgetTester tester, List<Transaction> txs) async {
+    await tester.runAsync(() async {
+      final pid = c.scan!.descriptor!.portfolioId;
+      for (final (i, t) in txs.indexed) {
+        final r = LedgerRecord.newUpsert(
+          portfolioId: pid,
+          deviceId: i == 0
+              ? c.prefs.deviceId
+              : '22222222-2222-4222-8222-222222222222',
+          transaction: t,
+          transactionId: txs.length == 2 ? _conflictId : null,
+          now: DateTime.utc(2026, 10, 8, i),
+        );
+        folder.records[r.fileName] = r.encode();
+      }
+      await c.rescan();
+    });
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('incomplete scan shows previous data under its label', (
+    tester,
+  ) async {
+    await boot(tester);
+    await inject(tester, [_buy('CCC', 3, '1', '1'), _buy('CCC', 3, '2', '1')]);
+    expect(c.scan!.complete, isFalse);
+    await lifetime(tester);
+    expect(find.textContaining('Showing previous data from'), findsOneWidget);
+    expect(find.textContaining('2,700.00'), findsWidgets);
+    expect(find.textContaining('ledger issue'), findsOneWidget);
+  });
+
+  testWidgets('incomplete scan without previous data is unavailable', (
+    tester,
+  ) async {
+    await boot(tester);
+    c.lastValidScan = null;
+    await inject(tester, [_buy('CCC', 3, '1', '1'), _buy('CCC', 3, '2', '1')]);
+    expect(find.textContaining('Unavailable — ledger has'), findsWidgets);
+    expect(find.text('Portfolio value'), findsNothing);
+    expect(find.textContaining('2,700.00'), findsNothing);
+  });
+
+  testWidgets('oversell ledger is unavailable', (tester) async {
+    await boot(tester);
+    await inject(tester, [_sell('AAA', 8, '500', '18')]);
+    expect(find.textContaining('Unavailable — ledger has'), findsWidgets);
+    expect(find.text('Portfolio value'), findsNothing);
+  });
+
+  testWidgets('realized loss shows minus sign and words', (tester) async {
+    await boot(tester, sellPrice: '12');
+    await tester.tap(find.text('Holdings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('AAA').first);
+    await tester.pumpAndSettle();
+    expect(find.text('−150.00 TRY loss'), findsOneWidget);
   });
 }

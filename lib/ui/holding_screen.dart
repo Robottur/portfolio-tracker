@@ -21,7 +21,7 @@ class HoldingEntry {
 }
 
 List<HoldingEntry> holdingEntries(AppController c, {bool closed = false}) => [
-  for (final p in c.replayNow.positions.values)
+  for (final p in c.displayReplay.positions.values)
     if (closed || p.quantity > Decimal.zero)
       HoldingEntry(p, c.prices.latest(p.instrument.id)),
 ]..sort((a, b) => a.position.instrument.id.compareTo(b.position.instrument.id));
@@ -72,8 +72,13 @@ class HoldingTile extends StatelessWidget {
 
 /// Holdings tab: list with a closed toggle; beside a detail pane when wide.
 class HoldingsView extends StatefulWidget {
-  const HoldingsView({super.key, required this.controller});
+  const HoldingsView({
+    super.key,
+    required this.controller,
+    required this.onOpenTransactions,
+  });
   final AppController controller;
+  final VoidCallback onOpenTransactions;
 
   @override
   State<HoldingsView> createState() => _HoldingsViewState();
@@ -89,15 +94,29 @@ class _HoldingsViewState extends State<HoldingsView> {
     builder: (context, _) {
       final c = widget.controller;
       final wide = MediaQuery.sizeOf(context).width >= 840;
-      final entries = holdingEntries(c, closed: _closed);
+      final entries = c.displayIncomplete
+          ? <HoldingEntry>[]
+          : holdingEntries(c, closed: _closed);
       final list = ListView(
         children: [
+          StatusBanner(
+            controller: c,
+            onOpenTransactions: widget.onOpenTransactions,
+          ),
           SwitchListTile(
             title: const Text('Show closed positions'),
             value: _closed,
             onChanged: (v) => setState(() => _closed = v),
           ),
-          if (entries.isEmpty) const ListTile(title: Text('No holdings')),
+          if (c.displayIncomplete)
+            ListTile(
+              title: Text(
+                'Unavailable — ledger has ${c.issueCount} '
+                '${c.issueCount == 1 ? 'issue' : 'issues'}',
+              ),
+            )
+          else if (entries.isEmpty)
+            const ListTile(title: Text('No holdings')),
           for (final e in entries)
             HoldingTile(
               entry: e,
@@ -165,14 +184,14 @@ class HoldingDetail extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
     builder: (context, _) {
-      final p = controller.replayNow.positions[instrumentId];
+      final p = controller.displayReplay.positions[instrumentId];
       if (p == null) return const Center(child: Text('No such holding'));
       final e = HoldingEntry(p, controller.prices.latest(instrumentId));
       final o = e.price;
       final tag = o == null ? null : priceTag(o.kind);
       final history =
           [
-            for (final t in controller.transactions)
+            for (final t in controller.displayTransactions)
               if (t.instrument.id == instrumentId) t,
           ]..sort((a, b) {
             final c = b.effectiveDate.compareTo(a.effectiveDate);
@@ -222,8 +241,8 @@ class HoldingDetail extends StatelessWidget {
             if (e.unrealizedPercent != null)
               _row('Unrealized %', Amount(signedPercent(e.unrealizedPercent!))),
           ],
-          _row('Realized gain', Amount(formatTry(p.realized))),
-          _row('Net dividends', Amount(formatTry(p.dividends))),
+          _row('Realized gain', Amount(signedTry(p.realized))),
+          _row('Net dividends', Amount(signedTry(p.dividends))),
           const Divider(),
           Text('History', style: Theme.of(context).textTheme.titleMedium),
           for (final t in history)
