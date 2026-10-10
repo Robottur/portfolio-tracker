@@ -3,9 +3,12 @@ library;
 
 export 'src/dates.dart';
 export 'src/engine/replay.dart';
+export 'src/engine/valuation.dart';
 export 'src/decimal_util.dart';
 export 'src/ledger/issue.dart';
 export 'src/ledger/reconcile.dart';
+export 'src/market/price.dart';
+export 'src/market/price_store.dart';
 export 'src/model/instrument.dart';
 export 'src/model/record.dart';
 export 'src/model/transaction.dart';

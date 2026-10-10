@@ -124,3 +124,20 @@ Uint8List descriptorBytes([String portfolioId = testPortfolioId]) =>
         }),
       ),
     );
+
+PriceObservation obs(
+  String id,
+  String price,
+  DateTime session, {
+  PriceKind kind = PriceKind.close,
+  DateTime? quoteTime,
+  DateTime? receivedAt,
+}) => PriceObservation(
+  instrumentId: id,
+  price: Decimal.parse(price),
+  sessionDate: session,
+  quoteTime: quoteTime,
+  receivedAt: receivedAt ?? testNow,
+  source: 'test',
+  kind: kind,
+);
