@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
+import 'transactions_screen.dart';
 
 const _titles = ['Dashboard', 'Holdings', 'Transactions', 'Settings'];
 const _icons = [
@@ -42,8 +43,10 @@ class _HomeShellState extends State<HomeShell> {
     final destinations = [
       for (var i = 0; i < _titles.length; i++) (_icons[i], _titles[i]),
     ];
-    // Tasks 15-17 replace these placeholder bodies.
-    final body = Center(child: Text(_titles[_index]));
+    // Tasks 16-17 replace the remaining placeholder bodies.
+    final body = _index == 2
+        ? TransactionsScreen(controller: c)
+        : Center(child: Text(_titles[_index]));
     return Scaffold(
       appBar: AppBar(
         title: Text(c.scan?.descriptor?.name ?? 'Asset Portfolio'),

@@ -162,7 +162,17 @@ class AppController extends ChangeNotifier {
 
   /// A second call while one is running gets the same Future.
   Future<void> onResume() =>
-      _resuming ??= _serial(_resume).whenComplete(() => _resuming = null);
+      _resuming ??= _resumeAll().whenComplete(() => _resuming = null);
+
+  Future<void> _resumeAll() async {
+    await _serial(_resume);
+    // Outside the queue: a save must never wait on the network.
+    try {
+      await refreshPrices();
+    } on Object {
+      // Price refresh is best effort; the coordinator records source errors.
+    }
+  }
 
   Future<void> _resume() async {
     final id = (scan?.descriptor ?? lastValidScan?.descriptor)?.portfolioId;
@@ -177,11 +187,6 @@ class AppController extends ChangeNotifier {
       await _rescanNow();
     } on Object {
       // shortcut: a failed rescan keeps the previous scan, upgrade with a status line.
-    }
-    try {
-      await refreshPrices();
-    } on Object {
-      // Price refresh is best effort; the coordinator records source errors.
     }
   }
 
@@ -210,6 +215,155 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     // Manual: the 5-minute throttle would skip the first refresh after enabling.
     if (on) await refreshPrices(manual: true);
+  }
+
+  static const readOnlyMessage =
+      'This folder was written by a newer app version. Update the app to edit it.';
+
+  /// Next free slot on [date]: highest existing dayOrder + 10 (default 10).
+  int nextDayOrder(DateTime date) {
+    var max = 0;
+    for (final t in transactions) {
+      if (t.effectiveDate == date && t.dayOrder > max) max = t.dayOrder;
+    }
+    return max + 10;
+  }
+
+  /// Replay of the current ledger with [candidate] added, replacing
+  /// [replacingTransactionId]; a null candidate previews a void.
+  ReplayResult previewChange({
+    Transaction? candidate,
+    String? replacingTransactionId,
+  }) {
+    final leaves = scan?.ledger.leaves ?? const <String, LedgerRecord>{};
+    final txs = [
+      for (final e in leaves.entries)
+        if (e.key != replacingTransactionId &&
+            e.value.operation == RecordOp.upsert)
+          e.value.transaction!,
+      ?candidate,
+    ];
+    return replay(txs, through: today);
+  }
+
+  /// Issues in [preview] that the current ledger does not already have.
+  List<LedgerIssue> newIssues(ReplayResult preview) {
+    String key(LedgerIssue i) =>
+        '${i.kind.index}|${i.message}|${i.recordIds.join(',')}';
+    final have = {for (final i in replayNow.issues) key(i)};
+    return [
+      for (final i in preview.issues)
+        if (!have.contains(key(i))) i,
+    ];
+  }
+
+  Future<void> addTransaction(Transaction t) async => _write(
+    t,
+    null,
+    (d) => LedgerRecord.newUpsert(
+      portfolioId: d,
+      deviceId: prefs.deviceId,
+      transaction: t,
+      now: _nowUtc(),
+    ),
+  );
+
+  Future<void> correctTransaction(String transactionId, Transaction t) async {
+    final leaf = _upsertLeaf(transactionId);
+    return _write(
+      t,
+      transactionId,
+      (d) => LedgerRecord.newUpsert(
+        portfolioId: d,
+        deviceId: prefs.deviceId,
+        transaction: t,
+        transactionId: transactionId,
+        supersedes: [leaf.recordId],
+        now: _nowUtc(),
+      ),
+    );
+  }
+
+  Future<void> voidTransaction(String transactionId) async {
+    final leaf = _upsertLeaf(transactionId);
+    return _write(
+      null,
+      transactionId,
+      (d) => LedgerRecord.newVoid(
+        portfolioId: d,
+        deviceId: prefs.deviceId,
+        transactionId: transactionId,
+        supersedes: [leaf.recordId],
+        now: _nowUtc(),
+      ),
+    );
+  }
+
+  /// Supersedes every competing leaf; a null [chosen] voids the transaction.
+  Future<void> resolveConflict(
+    String transactionId,
+    Transaction? chosen,
+  ) async {
+    _checkWritable();
+    final ids = <String>[
+      for (final r
+          in scan?.ledger.conflicted[transactionId] ?? <LedgerRecord>[])
+        r.recordId,
+    ];
+    if (ids.isEmpty) throw StateError('This transaction has no conflict');
+    return _write(
+      chosen,
+      transactionId,
+      (d) => chosen == null
+          ? LedgerRecord.newVoid(
+              portfolioId: d,
+              deviceId: prefs.deviceId,
+              transactionId: transactionId,
+              supersedes: ids,
+              now: _nowUtc(),
+            )
+          : LedgerRecord.newUpsert(
+              portfolioId: d,
+              deviceId: prefs.deviceId,
+              transaction: chosen,
+              transactionId: transactionId,
+              supersedes: ids,
+              now: _nowUtc(),
+            ),
+    );
+  }
+
+  void _checkWritable() {
+    if (scan == null || _publisher == null) {
+      throw StateError('No portfolio is open');
+    }
+    if (scan!.readOnly) throw StateError(readOnlyMessage);
+  }
+
+  LedgerRecord _upsertLeaf(String transactionId) {
+    _checkWritable();
+    final leaf = scan!.ledger.leaves[transactionId];
+    if (leaf == null || leaf.operation != RecordOp.upsert) {
+      throw StateError('This transaction can no longer be changed');
+    }
+    return leaf;
+  }
+
+  Future<void> _write(
+    Transaction? t,
+    String? replacing,
+    LedgerRecord Function(String portfolioId) build,
+  ) async {
+    _checkWritable();
+    if (t != null) {
+      final errors = t.validate(today: today);
+      if (errors.isNotEmpty) throw StateError(errors.first);
+    }
+    final issues = newIssues(
+      previewChange(candidate: t, replacingTransactionId: replacing),
+    );
+    if (issues.isNotEmpty) throw StateError(issues.first.message);
+    return publishRecord(build(scan!.descriptor!.portfolioId));
   }
 
   Future<void> setPrivacy(bool on) async {

@@ -35,7 +35,10 @@ class DevicePrefs {
   Future<void> setPrivacyMode(bool v) => _ok(_p.setBool(_privacyKey, v));
 
   // The plugin reports a failed write as false; callers must not carry on.
-  static Future<void> _ok(Future<bool> write) async {
-    if (!await write) throw StateError('Could not save settings');
+  Future<void> _ok(Future<bool> write) async {
+    if (!await write) {
+      await _p.reload(); // drop the cached value the failed write set
+      throw StateError('Could not save settings');
+    }
   }
 }

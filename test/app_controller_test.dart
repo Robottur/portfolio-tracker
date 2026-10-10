@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -8,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+// ignore: depend_on_referenced_packages
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 void main() {
   late Directory tmp;
@@ -205,6 +208,56 @@ void main() {
     expect(c.prefs.enabledSources, isEmpty);
     expect(calls, 0);
   });
+
+  test('a queued save does not wait for a slow price refresh', () async {
+    final gate = Completer<void>();
+    final c = AppController(
+      prefs: await DevicePrefs.load(),
+      privateDir: tmp,
+      network: MockClient((_) async {
+        await gate.future;
+        throw const SocketException('down');
+      }),
+      nowUtc: () => DateTime.utc(2026, 10, 10, 12),
+    );
+    await c.openFolder(MemoryRecordFolder(), 'mem', createName: 'Main');
+    await c.publishRecord(
+      LedgerRecord.newUpsert(
+        portfolioId: c.scan!.descriptor!.portfolioId,
+        deviceId: '11111111-1111-4111-8111-111111111111',
+        transaction: Transaction.buy(
+          instrument: Instrument.create(AssetClass.fx, 'USD'),
+          date: DateTime.utc(2026, 10, 1),
+          dayOrder: 1,
+          quantity: Decimal.one,
+          unitPrice: Decimal.one,
+          fees: Decimal.zero,
+        ),
+        now: DateTime.utc(2026, 10, 1),
+      ),
+    );
+    await c.prefs.setEnabledSources({'tcmb'});
+    final resume = c.onResume();
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    await c.publishRecord(rec(c)).timeout(const Duration(seconds: 2));
+    gate.complete();
+    await resume;
+  });
+
+  test('a failed preference write rolls the cached value back', () async {
+    SharedPreferences.resetStatic();
+    SharedPreferencesStorePlatform.instance = _RefusingStore();
+    final p = await DevicePrefs.load();
+    await expectLater(p.setPrivacyMode(true), throwsStateError);
+    expect(p.privacyMode, isFalse);
+  });
+}
+
+class _RefusingStore extends InMemorySharedPreferencesStore {
+  _RefusingStore() : super.empty();
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async =>
+      false;
 }
 
 class _FailPrefs extends DevicePrefs {
