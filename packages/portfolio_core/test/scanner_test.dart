@@ -28,6 +28,17 @@ class _BrokenBlobs extends MemoryBlobStore {
   Future<Uint8List?> get(String key) => throw const FileSystemException('x');
 }
 
+class _FullBlobs extends MemoryBlobStore {
+  @override
+  Future<void> put(String key, Uint8List bytes) =>
+      throw const FileSystemException('x');
+}
+
+class _NoKeysBlobs extends MemoryBlobStore {
+  @override
+  Future<List<String>> keys() => throw const FileSystemException('x');
+}
+
 void main() {
   late MemoryRecordFolder folder;
   late MemoryBlobStore retained;
@@ -257,4 +268,25 @@ void main() {
       expect(s.fileIssues.single.recordIds, [r.recordId]);
     },
   );
+
+  test('retained put failure is reported; folder copy still used', () async {
+    final r = rec();
+    folder.records[r.fileName] = r.encode();
+    final s = await LedgerScanner(folder, _FullBlobs()).scan(nowUtc: testNow);
+    expect(s.fileIssues.single.kind, IssueKind.badFile);
+    expect(
+      s.fileIssues.single.message,
+      'Private recovery copy could not be saved',
+    );
+    expect(s.fileIssues.single.recordIds, [r.recordId]);
+    expect(s.ledger.transactions, hasLength(1));
+  });
+
+  test('retained keys failure is reported', () async {
+    final r = rec();
+    folder.records[r.fileName] = r.encode();
+    final s = await LedgerScanner(folder, _NoKeysBlobs()).scan(nowUtc: testNow);
+    expect(s.fileIssues.single.message, contains('could not be read'));
+    expect(s.ledger.transactions, hasLength(1));
+  });
 }

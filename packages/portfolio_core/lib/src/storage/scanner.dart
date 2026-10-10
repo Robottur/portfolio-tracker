@@ -175,7 +175,18 @@ class LedgerScanner {
       final old = await safeGet(id);
       if (old == null) {
         // Never overwrite a retained copy we could not read.
-        if (!unreadable.contains(id)) await retained.put(id, mainBytes[id]!);
+        if (unreadable.contains(id)) continue;
+        try {
+          await retained.put(id, mainBytes[id]!);
+        } on Exception {
+          issues.add(
+            LedgerIssue(
+              IssueKind.badFile,
+              'Private recovery copy could not be saved',
+              recordIds: [id],
+            ),
+          );
+        }
         continue;
       }
       final kept = _decodeOrNull(old, pid);
@@ -248,6 +259,7 @@ class LedgerScanner {
     return n;
   }
 
+  /// Only for republishMissing: scan() already reported a failing read.
   Future<Uint8List?> _get(String key) async {
     try {
       return await retained.get(key);
