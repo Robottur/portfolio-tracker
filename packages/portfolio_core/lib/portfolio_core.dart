@@ -3,6 +3,8 @@ library;
 
 export 'src/dates.dart';
 export 'src/decimal_util.dart';
+export 'src/ledger/issue.dart';
+export 'src/ledger/reconcile.dart';
 export 'src/model/instrument.dart';
 export 'src/model/record.dart';
 export 'src/model/transaction.dart';

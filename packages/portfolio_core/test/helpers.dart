@@ -64,3 +64,47 @@ Transaction split({
   numerator: numerator,
   denominator: denominator,
 );
+
+const testPortfolioId = '11111111-1111-4111-8111-111111111111';
+const testDeviceId = '22222222-2222-4222-8222-222222222222';
+final testNow = DateTime.utc(2026, 10, 10, 12);
+
+extension TransactionTestCopy on Transaction {
+  /// Buy/sell only.
+  Transaction copyWithPrice(String price) =>
+      (type == TxType.buy ? Transaction.buy : Transaction.sell)(
+        instrument: instrument,
+        date: effectiveDate,
+        dayOrder: dayOrder,
+        quantity: quantity!,
+        unitPrice: Decimal.parse(price),
+        fees: fees!,
+      );
+}
+
+LedgerRecord upsert({
+  required Transaction tx,
+  String? transactionId,
+  List<String> supersedes = const [],
+}) => LedgerRecord.newUpsert(
+  portfolioId: testPortfolioId,
+  deviceId: testDeviceId,
+  transaction: tx,
+  transactionId: transactionId,
+  supersedes: supersedes,
+  now: testNow,
+);
+
+LedgerRecord revise(LedgerRecord prev, Transaction tx) => upsert(
+  tx: tx,
+  transactionId: prev.transactionId,
+  supersedes: [prev.recordId],
+);
+
+LedgerRecord voidOf(LedgerRecord prev) => LedgerRecord.newVoid(
+  portfolioId: testPortfolioId,
+  deviceId: testDeviceId,
+  transactionId: prev.transactionId,
+  supersedes: [prev.recordId],
+  now: testNow,
+);
