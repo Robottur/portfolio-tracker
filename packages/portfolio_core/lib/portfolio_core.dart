@@ -2,6 +2,7 @@
 library;
 
 export 'src/dates.dart';
+export 'src/engine/replay.dart';
 export 'src/decimal_util.dart';
 export 'src/ledger/issue.dart';
 export 'src/ledger/reconcile.dart';
