@@ -141,3 +141,26 @@ PriceObservation obs(
   source: 'test',
   kind: kind,
 );
+
+/// Prices from a fixed list: closeOnOrBefore = newest session <= date.
+class FixedPrices implements PriceLookup {
+  FixedPrices(this._all);
+
+  final List<PriceObservation> _all;
+
+  PriceObservation? _newest(Iterable<PriceObservation> xs) => xs.isEmpty
+      ? null
+      : xs.reduce((a, b) => b.sessionDate.isAfter(a.sessionDate) ? b : a);
+
+  @override
+  PriceObservation? closeOnOrBefore(String instrumentId, DateTime date) =>
+      _newest(
+        _all.where(
+          (o) => o.instrumentId == instrumentId && !o.sessionDate.isAfter(date),
+        ),
+      );
+
+  @override
+  PriceObservation? latest(String instrumentId) =>
+      _newest(_all.where((o) => o.instrumentId == instrumentId));
+}
