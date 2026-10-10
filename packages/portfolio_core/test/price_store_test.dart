@@ -179,4 +179,44 @@ void main() {
       expect(store.latest(id), isNull);
     }
   });
+
+  test('high-precision prices survive a reload', () async {
+    final derived = divide(
+      Decimal.parse('4216.3') * Decimal.parse('49.26'),
+      Decimal.parse('31.1034768'),
+    );
+    await store.addFetched([
+      obs(
+        'C:GOLD',
+        derived.toString(),
+        date(2026, 10, 9),
+        kind: PriceKind.derived,
+      ),
+    ]);
+    await store.setManual(
+      'C:TINY',
+      date(2026, 10, 9),
+      Decimal.parse('0.000000001234'),
+      nowUtc: testNow,
+    );
+    final again = PriceStore(blobs);
+    await again.load();
+    expect(again.latest('C:GOLD')!.price, derived);
+    expect(again.closeOnOrBefore('C:GOLD', date(2026, 10, 9))!.price, derived);
+    expect(again.latest('C:TINY')!.price, Decimal.parse('0.000000001234'));
+  });
+
+  test('manual price that could not reload is rejected', () {
+    for (final p in ['0', '1' * 19, '0.${'1' * 29}']) {
+      expect(
+        () => store.setManual(
+          'C:TINY',
+          date(2026, 10, 9),
+          Decimal.parse(p),
+          nowUtc: testNow,
+        ),
+        throwsArgumentError,
+      );
+    }
+  });
 }

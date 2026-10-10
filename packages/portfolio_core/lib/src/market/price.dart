@@ -1,7 +1,6 @@
 import 'package:decimal/decimal.dart';
 
 import '../dates.dart';
-import '../decimal_util.dart';
 
 enum PriceKind { close, delayedQuote, manual, derived }
 
@@ -59,7 +58,7 @@ class PriceObservation {
     if (kind.isEmpty) throw const FormatException('Bad kind');
     return PriceObservation(
       instrumentId: str('instrument_id'),
-      price: parseDecimalField(str('price')),
+      price: parseCachedPrice(str('price')),
       sessionDate: parseIsoDate(str('session_date')),
       quoteTime: q == null ? null : utc(q as String),
       receivedAt: utc(str('received_at')),
@@ -72,4 +71,18 @@ class PriceObservation {
 abstract interface class PriceLookup {
   PriceObservation? closeOnOrBefore(String instrumentId, DateTime date);
   PriceObservation? latest(String instrumentId);
+}
+
+final _cachedPrice = RegExp(r'^\d{1,18}(\.\d{1,28})?$');
+
+/// A price must survive a save/reload unchanged, so one rule covers both:
+/// derived prices (divide) carry up to 28 fractional digits.
+bool isStorablePrice(Decimal p) =>
+    p > Decimal.zero && _cachedPrice.hasMatch(p.toString());
+
+Decimal parseCachedPrice(String s) {
+  if (!_cachedPrice.hasMatch(s)) throw FormatException('Invalid price', s);
+  final d = Decimal.parse(s);
+  if (d <= Decimal.zero) throw FormatException('Price must be positive', s);
+  return d;
 }

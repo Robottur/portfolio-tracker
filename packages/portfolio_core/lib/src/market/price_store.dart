@@ -62,7 +62,7 @@ class PriceStore implements PriceLookup {
 
   Future<void> addFetched(List<PriceObservation> obs) async {
     for (final o in obs) {
-      if (o.price <= Decimal.zero) continue;
+      if (!isStorablePrice(o.price)) continue;
       final k = _fetchedKey(o);
       final old = _fetched[k];
       if (old == null || o.receivedAt.isAfter(old.receivedAt)) _fetched[k] = o;
@@ -76,7 +76,7 @@ class PriceStore implements PriceLookup {
     Decimal price, {
     required DateTime nowUtc,
   }) async {
-    if (price <= Decimal.zero) throw ArgumentError.value(price, 'price');
+    if (!isStorablePrice(price)) throw ArgumentError.value(price, 'price');
     _manual[_manualKey(instrumentId, date)] = PriceObservation(
       instrumentId: instrumentId,
       price: price,
