@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:portfolio_core/portfolio_core.dart';
@@ -7,6 +8,20 @@ import 'package:test/test.dart';
 import 'helpers.dart';
 
 Uint8List _b(String s) => Uint8List.fromList(utf8.encode(s));
+
+class _FlakyFolder extends MemoryRecordFolder {
+  String? badName;
+  bool failList = false;
+
+  @override
+  Future<List<String>> listRecordFiles() =>
+      failList ? throw const FileSystemException('x') : super.listRecordFiles();
+
+  @override
+  Future<Uint8List?> readRecordFile(String name) => name == badName
+      ? throw const FileSystemException('x')
+      : super.readRecordFile(name);
+}
 
 void main() {
   late MemoryRecordFolder folder;
@@ -166,5 +181,42 @@ void main() {
       s.fileIssues.single.message,
       'This folder was written by a newer app version',
     );
+  });
+
+  test('unreadable file is badFile; others still reconcile', () async {
+    final f = _FlakyFolder()..descriptor = descriptorBytes();
+    final good = rec();
+    final locked = rec('2');
+    f.records[good.fileName] = good.encode();
+    f.records[locked.fileName] = locked.encode();
+    f.badName = locked.fileName;
+    final s = await LedgerScanner(f, retained).scan(nowUtc: testNow);
+    expect(s.fileIssues.single.kind, IssueKind.badFile);
+    expect(s.fileIssues.single.message, 'File could not be read');
+    expect(s.fileIssues.single.recordIds, [locked.fileName]);
+    expect(s.ledger.transactions, hasLength(1));
+  });
+
+  test('unreadable folder gives descriptor null', () async {
+    final f = _FlakyFolder()
+      ..descriptor = descriptorBytes()
+      ..failList = true;
+    final s = await LedgerScanner(f, retained).scan(nowUtc: testNow);
+    expect(s.descriptor, isNull);
+    expect(s.fileIssues.single.message, 'Folder could not be read');
+    expect(s.fileIssues.single.recordIds, ['portfolio.json']);
+  });
+
+  test('orphan conflict copy is reported', () async {
+    final r = rec();
+    final cname = '${r.recordId}.sync-conflict-20260101-000000-ABC.json';
+    folder.records[cname] = r.encode();
+    final s = await scan();
+    final i = s.fileIssues.single;
+    expect(i.kind, IssueKind.contentConflict);
+    expect(i.message, 'Conflict copy without its record file');
+    expect(i.recordIds, [cname]);
+    expect(i.transactionId, r.transactionId);
+    expect(s.ledger.leaves, isEmpty);
   });
 }

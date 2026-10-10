@@ -37,26 +37,33 @@ class LedgerScanner {
   final BlobStore retained;
 
   Future<ScanResult> scan({required DateTime nowUtc}) async {
-    final descriptor = await _descriptor();
+    ScanResult noPortfolio(String msg) => ScanResult(
+      descriptor: null,
+      ledger: reconcile(const []),
+      fileIssues: [
+        LedgerIssue(
+          IssueKind.badFile,
+          msg,
+          recordIds: const ['portfolio.json'],
+        ),
+      ],
+      readOnly: false,
+      scannedAt: nowUtc,
+    );
+    final PortfolioDescriptor? descriptor;
+    final List<String> names;
+    try {
+      descriptor = await _descriptor();
+      names = await folder.listRecordFiles();
+    } on Exception {
+      return noPortfolio('Folder could not be read');
+    }
     if (descriptor == null) {
-      return ScanResult(
-        descriptor: null,
-        ledger: reconcile(const []),
-        fileIssues: const [
-          LedgerIssue(
-            IssueKind.badFile,
-            'Portfolio descriptor is missing or invalid',
-            recordIds: ['portfolio.json'],
-          ),
-        ],
-        readOnly: false,
-        scannedAt: nowUtc,
-      );
+      return noPortfolio('Portfolio descriptor is missing or invalid');
     }
     final pid = descriptor.portfolioId;
     final issues = <LedgerIssue>[];
     var readOnly = false;
-    final names = await folder.listRecordFiles();
     final fed = <String, LedgerRecord>{}; // recordId -> record to reconcile
     final mainBytes = <String, Uint8List>{};
     final conflicts = <String, String>{}; // conflict file name -> record id
@@ -66,7 +73,13 @@ class LedgerScanner {
 
     // Returns null (after recording the issue) if the file is unusable.
     Future<(LedgerRecord, Uint8List)?> read(String name, String id) async {
-      final bytes = await folder.readRecordFile(name);
+      final Uint8List? bytes;
+      try {
+        bytes = await folder.readRecordFile(name);
+      } on Exception {
+        bad(name, 'File could not be read');
+        return null;
+      }
       if (bytes == null) return null; // vanished between list and read
       try {
         final r = LedgerRecord.decode(bytes, portfolioId: pid);
@@ -116,9 +129,17 @@ class LedgerScanner {
     for (final e in conflicts.entries) {
       final got = await read(e.key, e.value);
       if (got == null) continue;
-      final main =
-          fed[e.value] ?? _decodeOrNull(await retained.get(e.value), pid);
-      if (main != null && !main.sameContentAs(got.$1)) {
+      final main = fed[e.value] ?? _decodeOrNull(await _get(e.value), pid);
+      if (main == null) {
+        issues.add(
+          LedgerIssue(
+            IssueKind.contentConflict,
+            'Conflict copy without its record file',
+            transactionId: got.$1.transactionId,
+            recordIds: [e.key],
+          ),
+        );
+      } else if (!main.sameContentAs(got.$1)) {
         issues.add(
           LedgerIssue(
             IssueKind.contentConflict,
@@ -132,10 +153,15 @@ class LedgerScanner {
 
     // Retained copies are the immutable originals; they win over the folder.
     for (final id in mainBytes.keys.toList()) {
-      final old = await retained.get(id);
-      if (old == null) {
-        await retained.put(id, mainBytes[id]!);
-        continue;
+      final Uint8List? old;
+      try {
+        old = await retained.get(id);
+        if (old == null) {
+          await retained.put(id, mainBytes[id]!);
+          continue;
+        }
+      } on Exception {
+        continue; // never overwrite a retained copy we could not read
       }
       final kept = _decodeOrNull(old, pid);
       if (kept == null || !kept.sameContentAs(fed[id]!)) {
@@ -152,7 +178,7 @@ class LedgerScanner {
     }
     for (final id in await retained.keys()) {
       if (fed.containsKey(id)) continue;
-      final kept = _decodeOrNull(await retained.get(id), pid);
+      final kept = _decodeOrNull(await _get(id), pid);
       if (kept == null || kept.recordId != id) continue;
       fed[id] = kept;
       if (!names.contains(kept.fileName)) {
@@ -184,7 +210,7 @@ class LedgerScanner {
     var n = 0;
     for (final i in res.fileIssues) {
       if (i.kind != IssueKind.missingFile) continue;
-      final r = _decodeOrNull(await retained.get(i.recordIds.single), pid);
+      final r = _decodeOrNull(await _get(i.recordIds.single), pid);
       if (r == null) continue;
       try {
         await p.publish(r);
@@ -194,6 +220,14 @@ class LedgerScanner {
       }
     }
     return n;
+  }
+
+  Future<Uint8List?> _get(String key) async {
+    try {
+      return await retained.get(key);
+    } on Exception {
+      return null;
+    }
   }
 
   Future<PortfolioDescriptor?> _descriptor() async {
