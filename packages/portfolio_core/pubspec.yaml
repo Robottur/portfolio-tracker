@@ -1,0 +1,16 @@
+name: portfolio_core
+description: Pure-Dart core (models, engine, sources) for the asset portfolio app.
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  decimal: 3.2.6
+  uuid: 4.6.0
+  http: 1.6.0
+  xml: 7.1.0
+
+dev_dependencies:
+  test: 1.33.0
+  lints: ^6.0.0
