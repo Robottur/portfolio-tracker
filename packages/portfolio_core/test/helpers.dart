@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:decimal/decimal.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 
@@ -108,3 +111,16 @@ LedgerRecord voidOf(LedgerRecord prev) => LedgerRecord.newVoid(
   supersedes: [prev.recordId],
   now: testNow,
 );
+
+Uint8List descriptorBytes([String portfolioId = testPortfolioId]) =>
+    Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'schema_version': 1,
+          'portfolio_id': portfolioId,
+          'name': 'Test',
+          'currency': 'TRY',
+          'reporting_timezone': 'Europe/Istanbul',
+        }),
+      ),
+    );
