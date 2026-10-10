@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
+import 'dashboard_screen.dart';
+import 'holding_screen.dart';
 import 'transactions_screen.dart';
 
 const _titles = ['Dashboard', 'Holdings', 'Transactions', 'Settings'];
@@ -43,10 +45,16 @@ class _HomeShellState extends State<HomeShell> {
     final destinations = [
       for (var i = 0; i < _titles.length; i++) (_icons[i], _titles[i]),
     ];
-    // Tasks 16-17 replace the remaining placeholder bodies.
-    final body = _index == 2
-        ? TransactionsScreen(controller: c)
-        : Center(child: Text(_titles[_index]));
+    // Task 17 replaces the Settings placeholder.
+    final body = switch (_index) {
+      0 => DashboardScreen(
+        controller: c,
+        onOpenTransactions: () => setState(() => _index = 2),
+      ),
+      1 => HoldingsView(controller: c),
+      2 => TransactionsScreen(controller: c),
+      _ => Center(child: Text(_titles[_index])),
+    };
     return Scaffold(
       appBar: AppBar(
         title: Text(c.scan?.descriptor?.name ?? 'Asset Portfolio'),

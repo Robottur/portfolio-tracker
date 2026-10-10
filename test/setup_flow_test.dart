@@ -77,7 +77,13 @@ void main() {
       builder: (_) => const AlertDialog(content: Amount('2,700.00')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('•••••'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('•••••'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('2,700.00'), findsNothing);
   });
 }
