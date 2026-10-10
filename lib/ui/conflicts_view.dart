@@ -1,19 +1,30 @@
 import 'package:flutter/material.dart';
 
+import 'package:portfolio_core/portfolio_core.dart';
+
 import '../app/app_controller.dart';
 import 'transactions_screen.dart';
 
-class ConflictsView extends StatelessWidget {
+class ConflictsView extends StatefulWidget {
   const ConflictsView({super.key, required this.controller});
 
   final AppController controller;
+
+  @override
+  State<ConflictsView> createState() => _ConflictsViewState();
+}
+
+class _ConflictsViewState extends State<ConflictsView> {
+  bool _busy = false; // one resolution at a time
+
+  AppController get controller => widget.controller;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
     builder: (context, _) {
       final conflicts = controller.scan?.ledger.conflicted ?? {};
-      final readOnly = controller.scan?.readOnly ?? true;
+      final readOnly = (controller.scan?.readOnly ?? true) || _busy;
       return Scaffold(
         appBar: AppBar(title: const Text('Conflicts')),
         body: ListView(
@@ -43,6 +54,7 @@ class ConflictsView extends StatelessWidget {
                                   controller.resolveConflict(
                                     e.key,
                                     leaf.transaction,
+                                    expectedLeafIds: _ids(e.value),
                                   ),
                                 ),
                           child: const Text('Keep this version'),
@@ -56,7 +68,11 @@ class ConflictsView extends StatelessWidget {
                     ? null
                     : () => _run(
                         context,
-                        controller.resolveConflict(e.key, null),
+                        controller.resolveConflict(
+                          e.key,
+                          null,
+                          expectedLeafIds: _ids(e.value),
+                        ),
                       ),
                 child: const Text('Void transaction'),
               ),
@@ -68,8 +84,13 @@ class ConflictsView extends StatelessWidget {
     },
   );
 
+  Set<String> _ids(List<LedgerRecord> leaves) => {
+    for (final l in leaves) l.recordId,
+  };
+
   Future<void> _run(BuildContext context, Future<void> action) async {
     final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
     try {
       await action;
     } on Object catch (e) {
@@ -78,6 +99,8 @@ class ConflictsView extends StatelessWidget {
           content: Text(e is StateError ? e.message : 'Could not save: $e'),
         ),
       );
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 }

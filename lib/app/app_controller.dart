@@ -268,8 +268,12 @@ class AppController extends ChangeNotifier {
     ),
   );
 
-  Future<void> correctTransaction(String transactionId, Transaction t) async {
-    final leaf = _upsertLeaf(transactionId);
+  Future<void> correctTransaction(
+    String transactionId,
+    Transaction t, {
+    String? expectedRecordId,
+  }) async {
+    final leaf = _upsertLeaf(transactionId, expectedRecordId);
     return _write(
       t,
       transactionId,
@@ -284,8 +288,11 @@ class AppController extends ChangeNotifier {
     );
   }
 
-  Future<void> voidTransaction(String transactionId) async {
-    final leaf = _upsertLeaf(transactionId);
+  Future<void> voidTransaction(
+    String transactionId, {
+    String? expectedRecordId,
+  }) async {
+    final leaf = _upsertLeaf(transactionId, expectedRecordId);
     return _write(
       null,
       transactionId,
@@ -302,8 +309,9 @@ class AppController extends ChangeNotifier {
   /// Supersedes every competing leaf; a null [chosen] voids the transaction.
   Future<void> resolveConflict(
     String transactionId,
-    Transaction? chosen,
-  ) async {
+    Transaction? chosen, {
+    Set<String>? expectedLeafIds,
+  }) async {
     _checkWritable();
     final ids = <String>[
       for (final r
@@ -311,6 +319,11 @@ class AppController extends ChangeNotifier {
         r.recordId,
     ];
     if (ids.isEmpty) throw StateError('This transaction has no conflict');
+    if (expectedLeafIds != null &&
+        (expectedLeafIds.length != ids.length ||
+            !expectedLeafIds.containsAll(ids))) {
+      throw StateError(changedMessage);
+    }
     return _write(
       chosen,
       transactionId,
@@ -333,18 +346,24 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  static const changedMessage =
+      'This transaction changed on another device. Reopen it to see the latest version.';
+
   void _checkWritable() {
-    if (scan == null || _publisher == null) {
-      throw StateError('No portfolio is open');
+    if (scan?.descriptor == null || _publisher == null) {
+      throw StateError('The portfolio folder is not available.');
     }
     if (scan!.readOnly) throw StateError(readOnlyMessage);
   }
 
-  LedgerRecord _upsertLeaf(String transactionId) {
+  LedgerRecord _upsertLeaf(String transactionId, String? expectedRecordId) {
     _checkWritable();
     final leaf = scan!.ledger.leaves[transactionId];
     if (leaf == null || leaf.operation != RecordOp.upsert) {
       throw StateError('This transaction can no longer be changed');
+    }
+    if (expectedRecordId != null && leaf.recordId != expectedRecordId) {
+      throw StateError(changedMessage);
     }
     return leaf;
   }

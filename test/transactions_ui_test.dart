@@ -245,4 +245,87 @@ void main() {
     expect(c.scan!.ledger.conflicted, isEmpty);
     expect(find.text('Keep this version'), findsNothing);
   });
+
+  testWidgets('a correction form opened before a remote edit refuses to save', (
+    tester,
+  ) async {
+    await boot(tester, seed: () => c.addTransaction(_buy('THYAO', '100')));
+    final leaf = c.scan!.ledger.leaves.values.single;
+    await tester.tap(find.text('BUY THYAO'));
+    await tester.pumpAndSettle();
+    await tester.tap(button('Correct'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() async {
+      final remote = LedgerRecord.newUpsert(
+        portfolioId: c.scan!.descriptor!.portfolioId,
+        deviceId: _otherDevice,
+        transaction: _buy('THYAO', '150'),
+        transactionId: leaf.transactionId,
+        supersedes: [leaf.recordId],
+        now: DateTime.utc(2026, 10, 3),
+      );
+      folder.records[remote.fileName] = remote.encode();
+      await c.rescan();
+    });
+    final before = folder.records.length;
+    await fill(tester, 'quantity', '120');
+    await tester.tap(button('Save'));
+    await settle(tester);
+    expect(find.text(AppController.changedMessage), findsOneWidget);
+    expect(folder.records.length, before);
+  });
+
+  testWidgets('privacy mode hides amounts on every screen', (tester) async {
+    late String txId;
+    await boot(
+      tester,
+      seed: () async {
+        await c.setPrivacy(true);
+        final pid = c.scan!.descriptor!.portfolioId;
+        final a = LedgerRecord.newUpsert(
+          portfolioId: pid,
+          deviceId: c.prefs.deviceId,
+          transaction: _buy('AKBNK', '777'),
+          now: DateTime.utc(2026, 10, 2),
+        );
+        txId = a.transactionId;
+        final b = LedgerRecord.newUpsert(
+          portfolioId: pid,
+          deviceId: _otherDevice,
+          transaction: _buy('AKBNK', '888'),
+          transactionId: txId,
+          now: DateTime.utc(2026, 10, 3),
+        );
+        folder.records[a.fileName] = a.encode();
+        folder.records[b.fileName] = b.encode();
+        await c.rescan();
+        await c.addTransaction(_buy('AKBNK', '999', order: 20));
+      },
+    );
+    bool leaks() => find
+        .byWidgetPredicate(
+          (w) =>
+              (w is Text && (w.data ?? '').contains(RegExp('999|888|777'))) ||
+              (w is EditableText &&
+                  w.controller.text.contains('999') &&
+                  !w.obscureText),
+        )
+        .evaluate()
+        .isNotEmpty;
+    expect(leaks(), isFalse);
+    await tester.tap(find.text('1 conflicts need a decision'));
+    await tester.pumpAndSettle();
+    expect(find.text('Keep this version'), findsNWidgets(2));
+    expect(leaks(), isFalse);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('BUY AKBNK'));
+    await tester.pumpAndSettle();
+    expect(leaks(), isFalse);
+    await tester.tap(button('Correct'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('quantity')), findsOneWidget);
+    expect(leaks(), isFalse);
+    expect(find.textContaining('= '), findsNothing);
+  });
 }

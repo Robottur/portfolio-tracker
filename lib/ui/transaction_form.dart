@@ -90,44 +90,53 @@ class _TransactionFormState extends State<TransactionForm> {
   }) {
     final text = c.text.trim();
     final parsed = text.isEmpty ? null : parseUserDecimal(text);
+    final masked = PrivacyScope.maskedOf(context);
     return TextField(
       key: Key(key),
       controller: c,
+      obscureText: masked,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: label,
         errorText: text.isNotEmpty && parsed == null ? _badNumber : null,
         // Shows the value actually read, so a thousands-separator misread is visible.
-        helperText: parsed == null ? null : '= $parsed',
+        helperText: parsed == null || masked ? null : '= $parsed',
       ),
       onChanged: (_) => setState(() {}),
     );
   }
 
-  Widget _intField(String key, String label, TextEditingController c) =>
-      TextField(
-        key: Key(key),
-        controller: c,
-        keyboardType: TextInputType.number,
-        decoration: InputDecoration(
-          labelText: label,
-          errorText: c.text.isNotEmpty && int.tryParse(c.text.trim()) == null
-              ? 'Enter a whole number'
-              : null,
-        ),
-        onChanged: (v) => setState(() {
-          if (identical(c, _order)) _orderTouched = true;
-        }),
-      );
+  Widget _intField(
+    String key,
+    String label,
+    TextEditingController c, {
+    bool obscure = false,
+  }) => TextField(
+    key: Key(key),
+    controller: c,
+    obscureText: obscure && PrivacyScope.maskedOf(context),
+    keyboardType: TextInputType.number,
+    decoration: InputDecoration(
+      labelText: label,
+      errorText: c.text.isNotEmpty && int.tryParse(c.text.trim()) == null
+          ? 'Enter a whole number'
+          : null,
+    ),
+    onChanged: (v) => setState(() {
+      if (identical(c, _order)) _orderTouched = true;
+    }),
+  );
 
   ({Transaction? tx, String? symbolError}) _build() {
     final Instrument inst;
     try {
-      inst = Instrument.create(
-        _class,
-        _class == AssetClass.gold ? 'GRAM' : _symbol.text,
-        name: _old?.tx.instrument.nameAtTrade ?? '',
-      );
+      final raw = _class == AssetClass.gold ? 'GRAM' : _symbol.text;
+      final fresh = Instrument.create(_class, raw);
+      final old = _old?.tx.instrument;
+      // The old name only describes the old instrument.
+      inst = old != null && old.id == fresh.id
+          ? Instrument.create(_class, raw, name: old.nameAtTrade)
+          : fresh;
     } on FormatException catch (e) {
       return (tx: null, symbolError: _symbol.text.isEmpty ? null : e.message);
     }
@@ -205,8 +214,8 @@ class _TransactionFormState extends State<TransactionForm> {
       final old = _old;
       await (old == null
           ? _c.addTransaction(tx)
-          : _c.correctTransaction(old.id, tx));
-      nav.pop();
+          : _c.correctTransaction(old.id, tx, expectedRecordId: old.recordId));
+      if (mounted) nav.pop();
     } on Object catch (e) {
       if (!mounted) return;
       setState(() {
@@ -312,8 +321,13 @@ class _TransactionFormState extends State<TransactionForm> {
             ),
           ],
           if (_type == TxType.split) ...[
-            _intField('ratioNum', 'Ratio numerator', _ratioNum),
-            _intField('ratioDen', 'Ratio denominator', _ratioDen),
+            _intField('ratioNum', 'Ratio numerator', _ratioNum, obscure: true),
+            _intField(
+              'ratioDen',
+              'Ratio denominator',
+              _ratioDen,
+              obscure: true,
+            ),
           ],
           if (_type != TxType.split)
             _decimalField('fees', 'Fees (TRY)', _fees, optional: true),

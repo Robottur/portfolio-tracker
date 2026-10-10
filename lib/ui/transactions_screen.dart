@@ -6,7 +6,7 @@ import 'conflicts_view.dart';
 import 'privacy.dart';
 import 'transaction_form.dart';
 
-typedef TxEntry = ({String id, Transaction tx});
+typedef TxEntry = ({String id, String recordId, Transaction tx});
 
 /// Label/value rows for a transaction; numeric values must go through [Amount].
 Widget txFields(Transaction t) => Column(
@@ -57,7 +57,11 @@ class TransactionsScreen extends StatelessWidget {
           <TxEntry>[
             for (final e in (scan?.ledger.leaves ?? {}).entries)
               if (e.value.operation == RecordOp.upsert)
-                (id: e.key, tx: e.value.transaction!),
+                (
+                  id: e.key,
+                  recordId: e.value.recordId,
+                  tx: e.value.transaction!,
+                ),
           ]..sort((a, b) {
             final c = b.tx.effectiveDate.compareTo(a.tx.effectiveDate);
             return c != 0 ? c : b.tx.dayOrder.compareTo(a.tx.dayOrder);
@@ -146,6 +150,7 @@ class TransactionDetail extends StatelessWidget {
       final blocked = controller.newIssues(
         controller.previewChange(replacingTransactionId: entry.id),
       );
+      final recordId = live ? leaf.recordId : entry.recordId;
       final canEdit = live && !(controller.scan?.readOnly ?? true);
       return Scaffold(
         appBar: AppBar(title: Text('${tx.type.json} ${tx.instrument.code}')),
@@ -169,7 +174,11 @@ class TransactionDetail extends StatelessWidget {
                           MaterialPageRoute<void>(
                             builder: (_) => TransactionForm(
                               controller: controller,
-                              existing: (id: entry.id, tx: tx),
+                              existing: (
+                                id: entry.id,
+                                recordId: recordId,
+                                tx: tx,
+                              ),
                             ),
                           ),
                         )
@@ -179,7 +188,7 @@ class TransactionDetail extends StatelessWidget {
                 const SizedBox(width: 12),
                 OutlinedButton(
                   onPressed: canEdit && blocked.isEmpty
-                      ? () => _confirmVoid(context)
+                      ? () => _confirmVoid(context, recordId)
                       : null,
                   child: const Text('Void'),
                 ),
@@ -191,7 +200,7 @@ class TransactionDetail extends StatelessWidget {
     },
   );
 
-  Future<void> _confirmVoid(BuildContext context) async {
+  Future<void> _confirmVoid(BuildContext context, String recordId) async {
     final nav = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
@@ -213,8 +222,8 @@ class TransactionDetail extends StatelessWidget {
     );
     if (ok != true) return;
     try {
-      await controller.voidTransaction(entry.id);
-      nav.pop();
+      await controller.voidTransaction(entry.id, expectedRecordId: recordId);
+      if (context.mounted) nav.pop();
     } on Object catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(_msg(e))));
     }
