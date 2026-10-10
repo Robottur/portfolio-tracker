@@ -85,3 +85,14 @@ Decimal priceFromJson(Object? n, String sourceId) {
   if (!isStorablePrice(d)) throw SourceException(sourceId, 'Unusable price $s');
   return d;
 }
+
+/// A decimal string (XML text, BtcTurk strings) as a positive price; plain
+/// digits only, so no exponent, sign or locale surprises.
+Decimal priceFromString(String s, String sourceId) {
+  final t = s.trim();
+  final d = RegExp(r'^\d+(\.\d+)?$').hasMatch(t) ? Decimal.tryParse(t) : null;
+  if (d == null || !isStorablePrice(d)) {
+    throw SourceException(sourceId, 'Unusable price $t');
+  }
+  return d;
+}
