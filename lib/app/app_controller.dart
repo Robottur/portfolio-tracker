@@ -154,23 +154,35 @@ class AppController extends ChangeNotifier {
         throw StateError('This folder already contains a portfolio');
       }
     }
-    final scanner = LedgerScanner(f, _retained);
-    final result = await scanner.scan(nowUtc: _nowUtc());
-    scan = result;
-    if (result.descriptor == null) {
+    // Queued so the swap never lands under a running restore/export/publish.
+    await _serial(() async {
+      final scanner = LedgerScanner(f, _retained);
+      final result = await scanner.scan(nowUtc: _nowUtc());
+      // A refused folder leaves all state as it was.
+      final descriptor = result.descriptor;
+      if (descriptor == null) {
+        // With nothing open there is no state to protect; keep the reason visible.
+        if (_folder == null) {
+          scan = result;
+          notifyListeners();
+        }
+        throw StateError(result.fileIssues.first.message);
+      }
+      // Loaded whatever the source settings: manual prices live in this store
+      // and a later setManual rewrites all of them.
+      await prices.load();
+      await prefs.setFolderLocation(location);
+      if (lastValidScan?.descriptor?.portfolioId != descriptor.portfolioId) {
+        lastValidScan = null;
+      }
+      scan = result;
+      _folder = f;
+      _scanner = scanner;
+      _publisher = Publisher(f, _pending);
+      _reopenFailed = false;
+      if (result.complete) lastValidScan = result;
       notifyListeners();
-      throw StateError(result.fileIssues.first.message);
-    }
-    // Loaded whatever the source settings: manual prices live in this store
-    // and a later setManual rewrites all of them.
-    await prices.load();
-    _folder = f;
-    _scanner = scanner;
-    _publisher = Publisher(f, _pending);
-    _reopenFailed = false;
-    if (result.complete) lastValidScan = result;
-    await prefs.setFolderLocation(location);
-    notifyListeners();
+    });
   }
 
   Future<void> rescan() => _serial(_rescanNow);
@@ -449,14 +461,18 @@ class AppController extends ChangeNotifier {
     Decimal price,
   ) async {
     _checkOpen();
-    await prices.setManual(instrumentId, date, price, nowUtc: _nowUtc());
-    notifyListeners();
+    await _serial(() async {
+      await prices.setManual(instrumentId, date, price, nowUtc: _nowUtc());
+      notifyListeners();
+    });
   }
 
   Future<void> removeManualPrice(String instrumentId, DateTime date) async {
     _checkOpen();
-    await prices.removeManual(instrumentId, date);
-    notifyListeners();
+    await _serial(() async {
+      await prices.removeManual(instrumentId, date);
+      notifyListeners();
+    });
   }
 
   /// Sources the user can consent to, for the settings screen.

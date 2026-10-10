@@ -50,7 +50,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       msg = await f();
     } on Object catch (e) {
-      msg = e is StateError ? e.message : 'Failed: $e';
+      // Never e.toString(): it can echo a private value.
+      msg = e is StateError
+          ? e.message
+          : 'Could not complete: ${e.runtimeType}';
     }
     if (mounted) setState(() => _message = msg);
   }
@@ -122,6 +125,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return null;
   });
 
+  static final _bareId = RegExp(r'^[0-9a-f-]{36}$');
+
+  static String _problemName(LedgerIssue i) => i.recordIds.isEmpty
+      ? 'Folder'
+      : i.recordIds.map((r) => _bareId.hasMatch(r) ? '$r.json' : r).join(', ');
+
   String _status(String id) {
     final s = _c.refresher.status[id];
     return [
@@ -142,9 +151,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ];
     final anyEnabled = _c.prefs.enabledSources.isNotEmpty;
     final masked = PrivacyScope.maskedOf(context);
-    final parsed = _price.text.trim().isEmpty
+    final raw = _price.text.trim().isEmpty
         ? null
         : parseUserDecimal(_price.text);
+    // isStorablePrice also bounds the digits; manual entry allows 8 decimals.
+    final parsed =
+        raw != null &&
+            isStorablePrice(Decimal.parse(raw)) &&
+            (raw.split('.').length < 2 || raw.split('.')[1].length <= 8)
+        ? raw
+        : null;
     final built = _instrument();
     final isGold = _class == AssetClass.gold;
     final heading = Theme.of(context).textTheme.titleMedium;
@@ -245,7 +261,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             decoration: InputDecoration(
               labelText: 'Price (TRY)',
               errorText: _price.text.trim().isNotEmpty && parsed == null
-                  ? 'Enter a number like 12.50'
+                  ? 'Enter a positive price with at most 8 decimals'
                   : null,
               helperText: parsed == null || masked ? null : '= $parsed',
             ),
@@ -287,7 +303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           for (final i in problems)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text(i.recordIds.isEmpty ? '—' : i.recordIds.join(', ')),
+              title: Text(_problemName(i)),
               subtitle: Text(i.message),
             ),
           if (problems.any((i) => i.kind == IssueKind.missingFile))

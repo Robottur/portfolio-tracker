@@ -44,7 +44,7 @@ class AssetPortfolioApp extends StatelessWidget {
       listenable: controller,
       builder: (_, _) =>
           controller.scan?.descriptor != null && !controller.folderAccessLost
-          ? HomeShell(controller: controller)
+          ? HomeShell(controller: controller, pick: pick)
           : SetupScreen(controller: controller, pick: pick),
     ),
   );

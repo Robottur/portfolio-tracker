@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
+import '../platform/folder_access.dart';
 import 'dashboard_screen.dart';
 import 'holding_screen.dart';
 import 'settings_screen.dart';
@@ -15,9 +16,14 @@ const _icons = [
 ];
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.controller});
+  const HomeShell({
+    super.key,
+    required this.controller,
+    this.pick = pickRecordFolder,
+  });
 
   final AppController controller;
+  final Future<PickedFolder?> Function() pick;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -56,7 +62,7 @@ class _HomeShellState extends State<HomeShell> {
         onOpenTransactions: () => setState(() => _index = 2),
       ),
       2 => TransactionsScreen(controller: c),
-      _ => SettingsScreen(controller: c),
+      _ => SettingsScreen(controller: c, pick: widget.pick),
     };
     return Scaffold(
       appBar: AppBar(

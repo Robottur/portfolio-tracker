@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:asset_portfolio/app/app_controller.dart';
 import 'package:asset_portfolio/app/device_prefs.dart';
 import 'package:asset_portfolio/main.dart';
+import 'package:asset_portfolio/platform/folder_access.dart';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,14 +14,16 @@ import 'package:http/testing.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Transaction _buy(String sym) => Transaction.buy(
+Transaction _buy(String sym, {int order = 10}) => Transaction.buy(
   instrument: Instrument.create(AssetClass.bistShare, sym),
   date: DateTime.utc(2026, 10, 1),
-  dayOrder: 10,
+  dayOrder: order,
   quantity: Decimal.parse('5'),
   unitPrice: Decimal.parse('10'),
   fees: Decimal.zero,
 );
+
+Future<PickedFolder?> _noPick() async => null;
 
 void main() {
   late Directory tmp;
@@ -45,6 +48,7 @@ void main() {
   Future<void> boot(
     WidgetTester tester, {
     Future<void> Function()? seed,
+    Future<PickedFolder?> Function() pick = _noPick,
   }) async {
     tester.view.physicalSize = const Size(700, 2400);
     tester.view.devicePixelRatio = 1;
@@ -59,7 +63,7 @@ void main() {
       await c.openFolder(folder, 'mem', createName: 'Main');
       await seed?.call();
     });
-    await tester.pumpWidget(AssetPortfolioApp(controller: c));
+    await tester.pumpWidget(AssetPortfolioApp(controller: c, pick: pick));
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
   }
@@ -188,5 +192,114 @@ void main() {
     final r3 = await ctl2.restoreFrom(other);
     expect(r3.copied, 1);
     expect(ctl2.transactions.length, 1);
+  });
+
+  testWidgets('unstorable prices are caught inline, never surfaced raw', (
+    t,
+  ) async {
+    await boot(t);
+    await t.runAsync(() => c.setPrivacy(true));
+    await t.pump();
+    await t.enterText(find.byKey(const Key('manualSymbol')), 'thyao');
+    for (final bad in ['0', '0,00', '1,123456789', '1234567890123456789']) {
+      await t.enterText(find.byKey(const Key('manualPrice')), bad);
+      await t.pump();
+      expect(
+        find.text('Enter a positive price with at most 8 decimals'),
+        findsOneWidget,
+        reason: bad,
+      );
+      expect(
+        t.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
+    }
+    expect(find.textContaining('Invalid argument'), findsNothing);
+  });
+
+  testWidgets('manual price makes the dashboard value available', (t) async {
+    await boot(t, seed: () async => c.addTransaction(_buy('AAA')));
+    await t.tap(find.byIcon(Icons.dashboard_outlined));
+    await t.pumpAndSettle();
+    expect(find.textContaining('250.00'), findsNothing);
+    await t.tap(find.byIcon(Icons.settings_outlined));
+    await t.pumpAndSettle();
+    await t.enterText(find.byKey(const Key('manualSymbol')), 'aaa');
+    await t.enterText(find.byKey(const Key('manualPrice')), '50');
+    await t.pump();
+    await t.tap(find.text('Save price'));
+    await settle(t);
+    await t.tap(find.byIcon(Icons.dashboard_outlined));
+    await t.pumpAndSettle();
+    expect(find.textContaining('250.00'), findsWidgets);
+  });
+
+  testWidgets('Restore asks first; Cancel copies nothing, Restore copies', (
+    t,
+  ) async {
+    final src = MemoryRecordFolder();
+    await boot(
+      t,
+      pick: () async => (folder: src, location: 'src'),
+      seed: () async {
+        await src.createDescriptor(folder.descriptor!);
+        final other = AppController(
+          prefs: c.prefs,
+          privateDir: Directory('${tmp.path}/o')..createSync(),
+          network: MockClient((_) async => fail('network')),
+          nowUtc: () => DateTime.utc(2026, 10, 10, 12),
+        );
+        await other.openFolder(src, 'src');
+        await other.addTransaction(_buy('AAA'));
+        await c.prefs.setFolderLocation('mem');
+      },
+    );
+    expect(c.transactions, isEmpty);
+    await t.tap(find.text('Restore from…'));
+    await t.pumpAndSettle();
+    expect(
+      find.text('Restore records from this folder into the current portfolio?'),
+      findsOneWidget,
+    );
+    await t.tap(find.text('Cancel'));
+    await settle(t);
+    expect(folder.records, isEmpty);
+    await t.tap(find.text('Restore from…'));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(TextButton, 'Restore'));
+    await settle(t);
+    expect(folder.records.length, 1);
+    expect(find.text('Copied 1, already present 0'), findsOneWidget);
+  });
+
+  test('a refused folder leaves state unchanged', () async {
+    final ctl = AppController(
+      prefs: await DevicePrefs.load(),
+      privateDir: tmp,
+      network: MockClient((_) async => fail('network')),
+      nowUtc: () => DateTime.utc(2026, 10, 10, 12),
+    );
+    await ctl.openFolder(folder, 'mem', createName: 'Main');
+    await ctl.addTransaction(_buy('AAA'));
+    final before = ctl.scan, valid = ctl.lastValidScan;
+    await expectLater(
+      ctl.openFolder(MemoryRecordFolder(), 'other'),
+      throwsStateError,
+    );
+    expect(ctl.scan, same(before));
+    expect(ctl.lastValidScan, same(valid));
+    expect(ctl.prefs.folderLocation, 'mem');
+    await ctl.addTransaction(
+      _buy('BBB', order: 20),
+    ); // still writes to the old folder
+    expect(folder.records.length, 2);
+
+    // Another portfolio whose first scan is incomplete: no stale "last valid".
+    final b2 = MemoryRecordFolder();
+    await b2.createDescriptor(PortfolioDescriptor.create('Second').encode());
+    b2.records['zzz.json'] = Uint8List.fromList(utf8.encode('nope'));
+    await ctl.openFolder(b2, 'bad2');
+    expect(ctl.scan!.complete, isFalse);
+    expect(ctl.lastValidScan, isNull);
   });
 }
