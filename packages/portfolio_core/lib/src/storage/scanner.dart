@@ -126,10 +126,29 @@ class LedgerScanner {
       mainBytes[got.$1.recordId] = got.$2;
     }
 
+    // A throwing retained read is reported once per record, never skipped.
+    final unreadable = <String>{};
+    Future<Uint8List?> safeGet(String id) async {
+      try {
+        return await retained.get(id);
+      } on Exception {
+        if (unreadable.add(id)) {
+          issues.add(
+            LedgerIssue(
+              IssueKind.badFile,
+              'Private recovery copy could not be read',
+              recordIds: [id],
+            ),
+          );
+        }
+        return null;
+      }
+    }
+
     for (final e in conflicts.entries) {
       final got = await read(e.key, e.value);
       if (got == null) continue;
-      final main = fed[e.value] ?? _decodeOrNull(await _get(e.value), pid);
+      final main = fed[e.value] ?? _decodeOrNull(await safeGet(e.value), pid);
       if (main == null) {
         issues.add(
           LedgerIssue(
@@ -153,15 +172,11 @@ class LedgerScanner {
 
     // Retained copies are the immutable originals; they win over the folder.
     for (final id in mainBytes.keys.toList()) {
-      final Uint8List? old;
-      try {
-        old = await retained.get(id);
-        if (old == null) {
-          await retained.put(id, mainBytes[id]!);
-          continue;
-        }
-      } on Exception {
-        continue; // never overwrite a retained copy we could not read
+      final old = await safeGet(id);
+      if (old == null) {
+        // Never overwrite a retained copy we could not read.
+        if (!unreadable.contains(id)) await retained.put(id, mainBytes[id]!);
+        continue;
       }
       final kept = _decodeOrNull(old, pid);
       if (kept == null || !kept.sameContentAs(fed[id]!)) {
@@ -176,9 +191,20 @@ class LedgerScanner {
         if (kept != null) fed[id] = kept;
       }
     }
-    for (final id in await retained.keys()) {
+    List<String> keys = const [];
+    try {
+      keys = await retained.keys();
+    } on Exception {
+      issues.add(
+        const LedgerIssue(
+          IssueKind.badFile,
+          'Private recovery copy could not be read',
+        ),
+      );
+    }
+    for (final id in keys) {
       if (fed.containsKey(id)) continue;
-      final kept = _decodeOrNull(await _get(id), pid);
+      final kept = _decodeOrNull(await safeGet(id), pid);
       if (kept == null || kept.recordId != id) continue;
       fed[id] = kept;
       if (!names.contains(kept.fileName)) {

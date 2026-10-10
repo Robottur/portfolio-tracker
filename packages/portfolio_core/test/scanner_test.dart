@@ -23,6 +23,11 @@ class _FlakyFolder extends MemoryRecordFolder {
       : super.readRecordFile(name);
 }
 
+class _BrokenBlobs extends MemoryBlobStore {
+  @override
+  Future<Uint8List?> get(String key) => throw const FileSystemException('x');
+}
+
 void main() {
   late MemoryRecordFolder folder;
   late MemoryBlobStore retained;
@@ -219,4 +224,37 @@ void main() {
     expect(i.transactionId, r.transactionId);
     expect(s.ledger.leaves, isEmpty);
   });
+
+  test(
+    'unreadable retained copy is reported, folder copy still used',
+    () async {
+      final r = rec();
+      folder.records[r.fileName] = r.encode();
+      final blobs = _BrokenBlobs()..data[r.recordId] = r.encode();
+      final s = await LedgerScanner(folder, blobs).scan(nowUtc: testNow);
+      expect(s.fileIssues.single.kind, IssueKind.badFile);
+      expect(
+        s.fileIssues.single.message,
+        'Private recovery copy could not be read',
+      );
+      expect(s.fileIssues.single.recordIds, [r.recordId]);
+      expect(s.ledger.transactions, hasLength(1));
+      expect(blobs.data[r.recordId], r.encode());
+    },
+  );
+
+  test(
+    'unreadable retained copy with missing file is not dropped silently',
+    () async {
+      final r = rec();
+      final blobs = _BrokenBlobs()..data[r.recordId] = r.encode();
+      final s = await LedgerScanner(folder, blobs).scan(nowUtc: testNow);
+      expect(s.fileIssues.single.kind, IssueKind.badFile);
+      expect(
+        s.fileIssues.single.message,
+        'Private recovery copy could not be read',
+      );
+      expect(s.fileIssues.single.recordIds, [r.recordId]);
+    },
+  );
 }
