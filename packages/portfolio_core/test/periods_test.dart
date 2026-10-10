@@ -32,4 +32,14 @@ void main() {
     final cal = TradingCalendar([date(2026, 10, 8), date(2026, 10, 9)]);
     expect(cal.lastTradingDayBefore(date(2026, 10, 9)), date(2026, 10, 8));
   });
+
+  test('stale known days fall back to the latest weekday', () {
+    final cal = TradingCalendar([date(2026, 9, 1), date(2026, 9, 2)]);
+    expect(cal.lastTradingDayBefore(date(2026, 10, 11)), date(2026, 10, 9));
+  });
+
+  test('a recent known day beats a weekday (holiday)', () {
+    final cal = TradingCalendar([date(2026, 10, 8)]);
+    expect(cal.lastTradingDayBefore(date(2026, 10, 12)), date(2026, 10, 8));
+  });
 }

@@ -7,19 +7,18 @@ class TradingCalendar {
 
   final List<DateTime> _days;
 
-  /// Latest known trading day strictly before [d].
+  /// Latest known trading day strictly before [d], unless it is stale.
   DateTime lastTradingDayBefore(DateTime d) {
-    DateTime? best;
+    DateTime? known;
     for (final k in _days) {
-      if (k.isBefore(d) && (best == null || k.isAfter(best))) best = k;
+      if (k.isBefore(d) && (known == null || k.isAfter(known))) known = k;
     }
-    if (best != null) return best;
-    // shortcut: weekday fallback ignores holidays until closes are cached
-    var x = d.subtract(const Duration(days: 1));
-    while (x.weekday > DateTime.friday) {
-      x = x.subtract(const Duration(days: 1));
+    var weekday = d.subtract(const Duration(days: 1));
+    while (weekday.weekday > DateTime.friday) {
+      weekday = weekday.subtract(const Duration(days: 1));
     }
-    return x;
+    // shortcut: falls back to weekdays when known closes are stale (> 4 days); holidays need an exchange calendar
+    return known == null || daysBetween(known, weekday) > 4 ? weekday : known;
   }
 }
 
