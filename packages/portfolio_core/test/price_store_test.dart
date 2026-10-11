@@ -239,4 +239,15 @@ void main() {
       ['XIST:AAA', 'XIST:BBB'],
     );
   });
+
+  test('fund kinds persist; a corrupt blob is ignored', () async {
+    await store.setFundKind('TTE', 'EMK');
+    final again = PriceStore(blobs);
+    await again.load();
+    expect(again.fundKind('TTE'), 'EMK');
+    await blobs.put('fund_kinds', Uint8List.fromList(utf8.encode('{nope')));
+    final bad = PriceStore(blobs);
+    await bad.load();
+    expect(bad.fundKind('TTE'), isNull);
+  });
 }

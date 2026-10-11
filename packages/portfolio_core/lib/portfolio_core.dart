@@ -18,6 +18,7 @@ export 'src/market/sources/btcturk.dart';
 export 'src/market/sources/gold.dart';
 export 'src/market/sources/isyatirim.dart';
 export 'src/market/sources/tcmb.dart';
+export 'src/market/sources/tefas.dart';
 export 'src/market/sources/yahoo.dart';
 export 'src/model/instrument.dart';
 export 'src/model/record.dart';

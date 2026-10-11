@@ -74,6 +74,42 @@ Future<Object?> getJson(
   }
 }
 
+/// POST [body] as JSON to [url] and decode the JSON reply; same failure
+/// contract as [getJson].
+Future<Object?> postJson(
+  http.Client c,
+  Uri url,
+  Map<String, Object?> body,
+  String sourceId, {
+  Map<String, String> headers = const {},
+  Duration timeout = requestTimeout,
+}) async {
+  final http.Response r;
+  try {
+    r = await c
+        .post(
+          url,
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0',
+            ...headers,
+          },
+          body: jsonEncode(body),
+        )
+        .timeout(timeout);
+  } on ConsentDeniedException {
+    rethrow;
+  } on Exception catch (e) {
+    throw SourceException(sourceId, 'Request failed: ${e.runtimeType}');
+  }
+  checkResponse(r, sourceId);
+  try {
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  } on FormatException {
+    throw SourceException(sourceId, 'Response is not JSON');
+  }
+}
+
 /// A JSON number as a positive price; never zero, never exponent notation.
 Decimal priceFromJson(Object? n, String sourceId) {
   if (n is! num) throw SourceException(sourceId, 'Price is not a number');

@@ -14,6 +14,7 @@ class PriceStore implements PriceLookup {
   final BlobStore _store;
   final Map<String, PriceObservation> _fetched = {};
   final Map<String, PriceObservation> _manual = {};
+  final Map<String, String> _fundKinds = {};
 
   static String _fetchedKey(PriceObservation o) =>
       '${o.instrumentId}|${isoDate(o.sessionDate)}|${o.kind.name}';
@@ -33,11 +34,39 @@ class PriceStore implements PriceLookup {
   Future<void> load() async {
     _fetched.clear();
     _manual.clear();
+    _fundKinds.clear();
     await _read('prices', (o) => _fetched[_fetchedKey(o)] = o);
     await _read(
       'manual',
       (o) => _manual[_manualKey(o.instrumentId, o.sessionDate)] = o,
     );
+    await _readFundKinds();
+  }
+
+  String? fundKind(String code) => _fundKinds[code];
+
+  Future<void> setFundKind(String code, String kind) {
+    _fundKinds[code] = kind;
+    return _store.put(
+      'fund_kinds',
+      Uint8List.fromList(utf8.encode(jsonEncode(_fundKinds))),
+    );
+  }
+
+  Future<void> _readFundKinds() async {
+    final bytes = await _store.get('fund_kinds');
+    if (bytes == null) return;
+    try {
+      final m = decodeStrictJson(utf8.decode(bytes));
+      if (m is! Map) return;
+      for (final e in m.entries) {
+        if (e.key is String && e.value is String) {
+          _fundKinds[e.key as String] = e.value as String;
+        }
+      }
+    } on FormatException {
+      return;
+    }
   }
 
   // A corrupt cache must never crash or become a price: skip what does not parse.
