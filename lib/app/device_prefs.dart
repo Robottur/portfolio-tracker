@@ -1,6 +1,9 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
+/// Order of the holding lists; numeric orders are largest first.
+enum HoldingSort { name, value, gainTry, gainPercent }
+
 /// Device-local settings. Never written to the shared folder.
 class DevicePrefs {
   DevicePrefs(this._p);
@@ -19,6 +22,7 @@ class DevicePrefs {
   static const _folderKey = 'folder_location';
   static const _sourcesKey = 'enabled_sources';
   static const _privacyKey = 'privacy_mode';
+  static const _sortKey = 'holding_sort';
 
   String get deviceId => _p.getString(_idKey)!;
 
@@ -33,6 +37,12 @@ class DevicePrefs {
 
   bool get privacyMode => _p.getBool(_privacyKey) ?? false;
   Future<void> setPrivacyMode(bool v) => _ok(_p.setBool(_privacyKey, v));
+
+  HoldingSort get holdingSort =>
+      HoldingSort.values.asNameMap()[_p.getString(_sortKey)] ??
+      HoldingSort.name;
+  Future<void> setHoldingSort(HoldingSort v) =>
+      _ok(_p.setString(_sortKey, v.name));
 
   // The plugin reports a failed write as false; callers must not carry on.
   Future<void> _ok(Future<bool> write) async {

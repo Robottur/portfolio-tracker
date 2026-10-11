@@ -1,7 +1,9 @@
+import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
+import 'allocation_pie.dart';
 import 'asset_labels.dart';
 import 'holding_screen.dart';
 import 'gain_colors.dart';
@@ -33,6 +35,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   Period _period = Period.daily;
   bool _refreshing = false;
+  bool _pie = false;
 
   Future<void> _refresh() async {
     setState(() => _refreshing = true);
@@ -61,9 +64,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final entries = c.displayIncomplete
           ? <HoldingEntry>[]
           : holdingEntries(c);
+      // Groups keep the name order; holdings are sorted within each group.
       final byClass = <AssetClass, List<HoldingEntry>>{};
       for (final e in entries) {
         byClass.putIfAbsent(e.position.instrument.assetClass, () => []).add(e);
+      }
+      for (final k in byClass.keys) {
+        byClass[k] = sortEntries(byClass[k]!, c.prefs.holdingSort);
       }
       final big = Theme.of(context).textTheme.headlineMedium;
       return ListView(
@@ -107,11 +114,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onSelectionChanged: (s) => setState(() => _period = s.first),
           ),
           const SizedBox(height: 8),
-          if (_period == Period.daily && closedDay) ...[
-            const Text('Market closed'),
-            for (final o in v.pricesUsed.values)
-              Text('${o.instrumentId}: ${stamp(o)}'),
-          ],
+          if (_period == Period.daily && closedDay)
+            ExpansionTile(
+              key: const PageStorageKey('market-closed'),
+              tilePadding: EdgeInsets.zero,
+              expandedAlignment: Alignment.centerLeft,
+              title: const Text('Market closed — last prices'),
+              children: [
+                for (final o in v.pricesUsed.values)
+                  Text('${o.instrumentId}: ${stamp(o)}'),
+              ],
+            ),
           if (c.displayIncomplete)
             const SizedBox.shrink()
           else if (r.unavailableReason != null)
@@ -135,20 +148,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const Text('Since inception; shorter than selected period.'),
           const Divider(),
           if (entries.isEmpty && !c.displayIncomplete)
-            const Text('No holdings'),
-          for (final cls in byClass.entries) ...[
-            Text(
-              assetClassHeading(cls.key),
-              style: Theme.of(context).textTheme.titleMedium,
+            const Text('No holdings')
+          else if (entries.isNotEmpty)
+            Row(
+              children: [
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('List')),
+                    ButtonSegment(value: true, label: Text('Pie')),
+                  ],
+                  selected: {_pie},
+                  onSelectionChanged: (s) => setState(() => _pie = s.first),
+                ),
+                const Spacer(),
+                if (!_pie) SortButton(controller: c),
+              ],
             ),
-            for (final e in cls.value)
-              HoldingTile(
-                entry: e,
-                onTap: () => openHolding(context, c, e.position.instrument.id),
-              ),
-          ],
+          if (_pie && entries.isNotEmpty) AllocationPie(entries: entries),
+          if (!_pie)
+            for (final cls in byClass.entries) ...[
+              _ClassHeading(cls.key, cls.value),
+              for (final e in cls.value)
+                HoldingTile(
+                  entry: e,
+                  onTap: () =>
+                      openHolding(context, c, e.position.instrument.id),
+                ),
+            ],
         ],
       );
     },
   );
+}
+
+/// Class name with the total of its priced holdings.
+class _ClassHeading extends StatelessWidget {
+  const _ClassHeading(this.cls, this.entries);
+  final AssetClass cls;
+  final List<HoldingEntry> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.titleMedium;
+    final priced = entries.where((e) => e.value != null);
+    final unpriced = entries.length - priced.length;
+    final total = priced.fold(Decimal.zero, (s, e) => s + e.value!);
+    return Wrap(
+      spacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(assetClassHeading(cls), style: style),
+        if (priced.isNotEmpty)
+          Amount('· ${formatTry(total)} TRY', style: style),
+        if (unpriced > 0) Text('+ $unpriced unpriced'),
+      ],
+    );
+  }
 }

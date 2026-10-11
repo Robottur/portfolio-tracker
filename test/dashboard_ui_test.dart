@@ -83,7 +83,7 @@ void main() {
 
   testWidgets('lifetime gain, value, and holding detail', (tester) async {
     await boot(tester);
-    expect(find.text('Market closed'), findsOneWidget);
+    expect(find.text('Market closed — last prices'), findsOneWidget);
     await lifetime(tester);
     expect(find.textContaining('600.00'), findsWidgets);
     expect(find.textContaining('2,700.00'), findsWidgets);

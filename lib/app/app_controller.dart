@@ -575,4 +575,9 @@ class AppController extends ChangeNotifier {
     await prefs.setPrivacyMode(on);
     notifyListeners();
   }
+
+  Future<void> setHoldingSort(HoldingSort by) async {
+    await prefs.setHoldingSort(by);
+    notifyListeners();
+  }
 }

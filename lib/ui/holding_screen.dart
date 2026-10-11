@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
+import '../app/device_prefs.dart';
 import 'asset_labels.dart';
 import 'gain_colors.dart';
 import 'privacy.dart';
@@ -28,6 +29,54 @@ List<HoldingEntry> holdingEntries(AppController c, {bool closed = false}) => [
       HoldingEntry(p, c.prices.latest(p.instrument.id)),
 ]..sort((a, b) => a.position.instrument.id.compareTo(b.position.instrument.id));
 
+/// Largest first for numeric orders; entries without the number go last.
+List<HoldingEntry> sortEntries(List<HoldingEntry> entries, HoldingSort by) {
+  Decimal? key(HoldingEntry e) => switch (by) {
+    HoldingSort.name => null,
+    HoldingSort.value => e.value,
+    HoldingSort.gainTry => e.closed ? null : e.unrealized,
+    HoldingSort.gainPercent => e.closed ? null : e.unrealizedPercent,
+  };
+  int byName(HoldingEntry a, HoldingEntry b) {
+    final x = a.position.instrument, y = b.position.instrument;
+    final c = x.code.compareTo(y.code);
+    return c != 0 ? c : x.id.compareTo(y.id);
+  }
+
+  return [...entries]..sort((a, b) {
+    final ka = key(a), kb = key(b);
+    if (ka != null && kb != null && ka != kb) return kb.compareTo(ka);
+    if ((ka == null) != (kb == null)) return ka == null ? 1 : -1;
+    return byName(a, b);
+  });
+}
+
+const _sortLabels = {
+  HoldingSort.name: 'Name',
+  HoldingSort.value: 'Value',
+  HoldingSort.gainTry: 'TRY gain',
+  HoldingSort.gainPercent: '% gain',
+};
+
+class SortButton extends StatelessWidget {
+  const SortButton({super.key, required this.controller});
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<HoldingSort>(
+    tooltip: 'Sort',
+    icon: const Icon(Icons.sort),
+    initialValue: controller.prefs.holdingSort,
+    onSelected: (s) => controller.setHoldingSort(s).catchError((_) {
+      // A sort order is a convenience; the list keeps its last order.
+    }),
+    itemBuilder: (_) => [
+      for (final e in _sortLabels.entries)
+        PopupMenuItem(value: e.key, child: Text(e.value)),
+    ],
+  );
+}
+
 class HoldingTile extends StatelessWidget {
   const HoldingTile({
     super.key,
@@ -45,6 +94,7 @@ class HoldingTile extends StatelessWidget {
     final tag = entry.price == null ? null : priceTag(entry.price!);
     return ListTile(
       selected: selected,
+      isThreeLine: true, // value, gain and gain % stack on the right
       title: Text(
         '${entry.position.instrument.code}${entry.closed ? ' (closed)' : ''}',
       ),
@@ -63,11 +113,18 @@ class HoldingTile extends StatelessWidget {
             const Text('Price missing')
           else
             Amount('${formatTry(entry.value!)} TRY'),
-          if (entry.unrealized != null && !entry.closed)
+          if (entry.unrealized != null && !entry.closed) ...[
             Amount(
               signedTry(entry.unrealized!),
               style: gainStyle(context, entry.unrealized!),
             ),
+            // Own line: beside the TRY gain it overflows phone widths.
+            if (entry.unrealizedPercent != null)
+              Amount(
+                signedPercent(entry.unrealizedPercent!),
+                style: gainStyle(context, entry.unrealized!),
+              ),
+          ],
         ],
       ),
       onTap: onTap,
@@ -101,7 +158,10 @@ class _HoldingsViewState extends State<HoldingsView> {
       final wide = MediaQuery.sizeOf(context).width >= 840;
       final entries = c.displayIncomplete
           ? <HoldingEntry>[]
-          : holdingEntries(c, closed: _closed);
+          : sortEntries(
+              holdingEntries(c, closed: _closed),
+              c.prefs.holdingSort,
+            );
       final list = ListView(
         children: [
           StatusBanner(controller: c, onOpenIssues: widget.onOpenIssues),
@@ -109,6 +169,7 @@ class _HoldingsViewState extends State<HoldingsView> {
             title: const Text('Show closed positions'),
             value: _closed,
             onChanged: (v) => setState(() => _closed = v),
+            secondary: SortButton(controller: c),
           ),
           if (c.displayIncomplete)
             ListTile(
