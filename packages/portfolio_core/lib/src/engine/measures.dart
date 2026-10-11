@@ -47,9 +47,9 @@ class UsdRates implements Rates {
 }
 
 class RealRates implements Rates {
-  RealRates(this._cpi, {required DateTime today}) : _today = today;
+  RealRates(this._cpi, {required this.today});
   final CpiSeries _cpi;
-  final DateTime _today;
+  final DateTime today;
 
   @override
   Decimal? at(DateTime day) {
@@ -73,7 +73,7 @@ class RealRates implements Rates {
   @override
   String? get note {
     final latest = _cpi.latestMonth;
-    return latest != null && monthKey(_today).compareTo(latest) > 0
+    return latest != null && monthKey(today).compareTo(latest) > 0
         ? 'inflation known through $latest'
         : null;
   }
