@@ -86,7 +86,7 @@ void main() {
           s.title is Text &&
           (s.title as Text).data != 'Hide amounts by default',
     );
-    expect(sources.length, 6);
+    expect(sources.length, 7);
     expect(sources.every((s) => !s.value), isTrue);
     expect(
       find.text(

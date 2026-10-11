@@ -54,7 +54,7 @@ class RefreshCoordinator {
   static String latestSourceId(AssetClass c, Set<String> on) => switch (c) {
     AssetClass.bistShare => 'yahoo',
     AssetClass.fx => on.contains('yahoo') ? 'yahoo' : 'tcmb',
-    AssetClass.crypto => 'btcturk',
+    AssetClass.crypto => on.contains('btcturk') ? 'btcturk' : 'binance',
     AssetClass.gold => 'gold',
     AssetClass.fund => 'tefas',
   };
@@ -62,7 +62,7 @@ class RefreshCoordinator {
   static String closesSourceId(AssetClass c, Set<String> on) => switch (c) {
     AssetClass.bistShare => 'isyatirim',
     AssetClass.fx => on.contains('yahoo') ? 'yahoo' : 'tcmb',
-    AssetClass.crypto => 'btcturk',
+    AssetClass.crypto => on.contains('btcturk') ? 'btcturk' : 'binance',
     AssetClass.gold => 'gold',
     AssetClass.fund => 'tefas',
   };
@@ -126,13 +126,16 @@ class RefreshCoordinator {
       return s;
     }
 
+    // [got] collects the instrument ids a call returned.
     Future<bool> call(
       PriceSource s,
-      Future<List<PriceObservation>> Function() fetch,
-    ) async {
+      Future<List<PriceObservation>> Function() fetch, [
+      Set<String>? got,
+    ]) async {
       final st = _status.putIfAbsent(s.id, SourceStatus.new);
       try {
         final obs = await fetch();
+        got?.addAll(obs.map((o) => o.instrumentId));
         await store.addFetched(obs);
         report.fetched += obs.length;
         st
@@ -163,11 +166,27 @@ class RefreshCoordinator {
 
     final groups = <String, List<Instrument>>{};
     for (final i in current) {
-      final id = latestSourceId(i.assetClass, on);
+      var id = latestSourceId(i.assetClass, on);
+      // BtcTurk off, in back-off or refused: Binance takes all crypto.
+      if (i.assetClass == AssetClass.crypto && usable(id) == null) {
+        id = 'binance';
+      }
       if (usable(id) != null) groups.putIfAbsent(id, () => []).add(i);
     }
     for (final e in groups.entries) {
       final s = byId[e.key]!;
+      if (s.id == 'btcturk') {
+        final got = <String>{};
+        final ok = await call(s, () => s.latest(e.value), got);
+        // Coins BtcTurk does not list go to Binance (only if it succeeded: a
+        // failure says nothing about the coin).
+        final rest = e.value.where((i) => !got.contains(i.id)).toList();
+        final b = usable('binance');
+        if (ok && b != null && rest.isNotEmpty) {
+          await call(b, () => b.latest(rest));
+        }
+        continue;
+      }
       if (s.id != 'tefas') {
         await call(s, () => s.latest(e.value));
         continue;
@@ -214,12 +233,19 @@ class RefreshCoordinator {
         if (windows.any((w) => !day.isBefore(w.$1) && !day.isAfter(w.$2))) {
           continue;
         }
-        final s = usable(closesSourceId(i.assetClass, on));
+        var s = usable(closesSourceId(i.assetClass, on));
+        if (s == null && i.assetClass == AssetClass.crypto) {
+          s = usable('binance');
+        }
         if (s == null) continue;
         final from = day.subtract(const Duration(days: 10));
-        if (await call(s, () => s.closes(i, from, day))) {
-          _windows.putIfAbsent(i.id, () => []).add((from, day));
+        final got = <String>{};
+        var done = await call(s, () => s!.closes(i, from, day), got);
+        final b = usable('binance');
+        if (done && s.id == 'btcturk' && got.isEmpty && b != null) {
+          done = await call(b, () => b.closes(i, from, day));
         }
+        if (done) _windows.putIfAbsent(i.id, () => []).add((from, day));
       }
     }
     return report;

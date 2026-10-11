@@ -16,6 +16,7 @@ export 'src/market/price.dart';
 export 'src/market/price_store.dart';
 export 'src/market/refresh.dart';
 export 'src/market/source.dart';
+export 'src/market/sources/binance.dart';
 export 'src/market/sources/btcturk.dart';
 export 'src/market/sources/gold.dart';
 export 'src/market/sources/isyatirim.dart';

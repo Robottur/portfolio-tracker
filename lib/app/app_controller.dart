@@ -32,6 +32,7 @@ class AppController extends ChangeNotifier {
       GoldSource(client, nowUtc: _nowUtc),
       TcmbSource(client, nowUtc: _nowUtc),
       BtcTurkSource(client, nowUtc: _nowUtc),
+      BinanceSource(client, nowUtc: _nowUtc),
       TefasSource(
         client,
         nowUtc: _nowUtc,

@@ -23,6 +23,7 @@ class FakeSource implements PriceSource {
   final List<String> calls = [];
   Object? failWith;
   List<PriceObservation> Function(Instrument, DateTime, DateTime)? closesFn;
+  List<Instrument> Function(List<Instrument>)? latestFn;
 
   PriceObservation _o(Instrument i, DateTime d, PriceKind k) =>
       PriceObservation(
@@ -40,7 +41,7 @@ class FakeSource implements PriceSource {
     calls.add('latest:${instruments.map((i) => i.id).join(',')}');
     if (failWith != null) throw failWith!;
     return [
-      for (final i in instruments)
+      for (final i in latestFn?.call(instruments) ?? instruments)
         _o(i, date(2026, 10, 10), PriceKind.delayedQuote),
     ];
   }
@@ -77,6 +78,7 @@ void main() {
       'isyatirim': FakeSource('isyatirim', {AssetClass.bistShare}),
       'tcmb': FakeSource('tcmb', {AssetClass.fx}),
       'btcturk': FakeSource('btcturk', {AssetClass.crypto}),
+      'binance': FakeSource('binance', {AssetClass.crypto}),
       'gold': FakeSource('gold', {AssetClass.gold}),
     };
     rc = RefreshCoordinator(
@@ -222,6 +224,91 @@ void main() {
     expect(totalCalls(), 0);
     expect(r.fetched, 0);
     expect(rc.status, isEmpty);
+  });
+
+  group('binance fallback', () {
+    final bnb = Instrument.create(AssetClass.crypto, 'BNB');
+    setUp(() {
+      // BtcTurk lists BTC only.
+      src['btcturk']!.latestFn = (l) => l.where((i) => i.id == btc.id).toList();
+      src['btcturk']!.closesFn = (i, f, t) =>
+          i.id == btc.id ? [src['btcturk']!._o(i, t, PriceKind.close)] : [];
+    });
+
+    test('routing helpers', () {
+      expect(
+        RefreshCoordinator.latestSourceId(AssetClass.crypto, {'btcturk'}),
+        'btcturk',
+      );
+      expect(
+        RefreshCoordinator.latestSourceId(AssetClass.crypto, {'binance'}),
+        'binance',
+      );
+      expect(
+        RefreshCoordinator.closesSourceId(AssetClass.crypto, {'binance'}),
+        'binance',
+      );
+    });
+
+    test('coin btcturk lacks goes to binance', () async {
+      enabled = {'btcturk', 'binance'};
+      await rc.refresh(current: [btc, bnb], history: {});
+      expect(src['btcturk']!.calls, ['latest:CRYPTO:BTC,CRYPTO:BNB']);
+      expect(src['binance']!.calls, ['latest:CRYPTO:BNB']);
+      expect(store.latest(bnb.id)?.source, 'binance');
+    });
+
+    test('binance off: no fallback request', () async {
+      enabled = {'btcturk'};
+      await rc.refresh(current: [btc, bnb], history: {});
+      expect(src['binance']!.calls, isEmpty);
+      expect(store.latest(bnb.id), isNull);
+    });
+
+    test('only binance enabled takes all crypto', () async {
+      enabled = {'binance'};
+      await rc.refresh(current: [btc, bnb], history: {});
+      expect(src['btcturk']!.calls, isEmpty);
+      expect(src['binance']!.calls, ['latest:CRYPTO:BTC,CRYPTO:BNB']);
+    });
+
+    test('btcturk in backoff: crypto goes to binance', () async {
+      enabled = {'btcturk', 'binance'};
+      src['btcturk']!.failWith = SourceException('btcturk', 'boom');
+      await rc.refresh(current: [btc], history: {});
+      src['btcturk']!.failWith = null;
+      await rc.refresh(current: [btc], history: {}, manual: true);
+      expect(src['binance']!.calls, ['latest:CRYPTO:BTC']);
+    });
+
+    test('closes: empty from btcturk falls back to binance', () async {
+      enabled = {'btcturk', 'binance'};
+      final d = date(2026, 10, 9);
+      await rc.refresh(
+        current: [],
+        history: {
+          d: [btc, bnb],
+        },
+      );
+      expect(src['btcturk']!.calls, [
+        'closes:CRYPTO:BTC:2026-09-29:2026-10-09',
+        'closes:CRYPTO:BNB:2026-09-29:2026-10-09',
+      ]);
+      expect(src['binance']!.calls, [
+        'closes:CRYPTO:BNB:2026-09-29:2026-10-09',
+      ]);
+    });
+
+    test('closes: binance off, no fallback request', () async {
+      enabled = {'btcturk'};
+      await rc.refresh(
+        current: [],
+        history: {
+          date(2026, 10, 9): [bnb],
+        },
+      );
+      expect(src['binance']!.calls, isEmpty);
+    });
   });
 
   test('only btcturk enabled: only btcturk is called', () async {
