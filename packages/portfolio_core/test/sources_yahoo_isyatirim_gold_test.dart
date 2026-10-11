@@ -263,7 +263,8 @@ void main() {
         r.single.price,
         divide(meta('yahoo_gcf.json') * meta('yahoo_usdtry.json'), div),
       );
-      expect(r.single.kind, PriceKind.derived);
+      // An intraday snapshot, never a close for its session date.
+      expect(r.single.kind, PriceKind.delayedQuote);
       expect(r.single.source, 'gold');
       expect(r.single.instrumentId, 'GOLD:GRAM');
       expect(isStorablePrice(r.single.price), isTrue);

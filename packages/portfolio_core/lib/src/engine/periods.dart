@@ -13,13 +13,19 @@ class TradingCalendar {
     for (final k in _days) {
       if (k.isBefore(d) && (known == null || k.isAfter(known))) known = k;
     }
-    var weekday = d.subtract(const Duration(days: 1));
-    while (weekday.weekday > DateTime.friday) {
-      weekday = weekday.subtract(const Duration(days: 1));
-    }
+    final weekday = weekdayBefore(d);
     // shortcut: falls back to weekdays when known closes are stale (> 4 days); holidays need an exchange calendar
     return known == null || daysBetween(known, weekday) > 4 ? weekday : known;
   }
+}
+
+/// Latest Monday–Friday strictly before [d].
+DateTime weekdayBefore(DateTime d) {
+  var w = d.subtract(const Duration(days: 1));
+  while (w.weekday > DateTime.friday) {
+    w = w.subtract(const Duration(days: 1));
+  }
+  return w;
 }
 
 /// Lifetime is handled in computePeriod (it depends on the first transaction).

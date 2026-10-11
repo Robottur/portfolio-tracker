@@ -19,7 +19,9 @@ String signedPercent(Decimal v) {
   return r > Decimal.zero ? '+${formatPercent(r)}' : '−${formatPercent(-r)}';
 }
 
-String? priceTag(PriceKind k) => switch (k) {
+// Derived gold is "indicative" everywhere (spec §7.2), whatever its kind.
+String? priceTag(PriceObservation o) => switch (o.kind) {
+  _ when o.source == 'gold' => 'indicative',
   PriceKind.delayedQuote => 'Delayed',
   PriceKind.derived => 'indicative',
   PriceKind.manual => 'manual',

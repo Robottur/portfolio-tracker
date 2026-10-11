@@ -74,7 +74,8 @@ class GoldSource implements PriceSource {
         quoteTime: gc.time.isBefore(fx.time) ? gc.time : fx.time,
         receivedAt: _now(),
         source: id,
-        kind: PriceKind.derived,
+        // Intraday: must never pass as that day's close.
+        kind: PriceKind.delayedQuote,
       ),
     ];
   }

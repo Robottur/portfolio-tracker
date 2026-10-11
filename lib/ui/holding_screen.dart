@@ -40,7 +40,7 @@ class HoldingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tag = entry.price == null ? null : priceTag(entry.price!.kind);
+    final tag = entry.price == null ? null : priceTag(entry.price!);
     return ListTile(
       selected: selected,
       title: Text(
@@ -188,7 +188,7 @@ class HoldingDetail extends StatelessWidget {
       if (p == null) return const Center(child: Text('No such holding'));
       final e = HoldingEntry(p, controller.prices.latest(instrumentId));
       final o = e.price;
-      final tag = o == null ? null : priceTag(o.kind);
+      final tag = o == null ? null : priceTag(o);
       final history =
           [
             for (final t in controller.displayTransactions)

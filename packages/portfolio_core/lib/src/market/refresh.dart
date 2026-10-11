@@ -1,4 +1,3 @@
-import '../dates.dart';
 import '../model/instrument.dart';
 import 'consent_client.dart';
 import 'price.dart';
@@ -42,6 +41,8 @@ class RefreshCoordinator {
 
   final Map<String, SourceStatus> _status = {};
   final Map<String, int> _failures = {};
+  // Closes windows fetched in this coordinator's lifetime, per instrument.
+  final Map<String, List<(DateTime, DateTime)>> _windows = {};
   DateTime? _lastLatestStart;
 
   Map<String, SourceStatus> get status => Map.unmodifiable(_status);
@@ -90,7 +91,7 @@ class RefreshCoordinator {
       return s;
     }
 
-    Future<void> call(
+    Future<bool> call(
       PriceSource s,
       Future<List<PriceObservation>> Function() fetch,
     ) async {
@@ -104,6 +105,7 @@ class RefreshCoordinator {
           ..lastError = null
           ..retryNotBefore = null;
         _failures.remove(s.id);
+        return true;
       } on ConsentDeniedException {
         denied.add(s.id);
         st.lastError = 'Source is disabled';
@@ -121,6 +123,7 @@ class RefreshCoordinator {
           );
         report.errors.add('${s.id}: $msg');
       }
+      return false;
     }
 
     final groups = <String, List<Instrument>>{};
@@ -135,16 +138,18 @@ class RefreshCoordinator {
     for (final e in history.entries) {
       final day = e.key;
       for (final i in e.value) {
-        final cached = store.closeOnOrBefore(i.id, day);
-        if (cached != null && daysBetween(cached.sessionDate, day) <= 7) {
+        // Only an exact-date close counts: an older one may hide newer sessions.
+        if (store.closeOnOrBefore(i.id, day)?.sessionDate == day) continue;
+        final windows = _windows[i.id] ?? const [];
+        if (windows.any((w) => !day.isBefore(w.$1) && !day.isAfter(w.$2))) {
           continue;
         }
         final s = usable(_closesId(i.assetClass));
         if (s == null) continue;
-        await call(
-          s,
-          () => s.closes(i, day.subtract(const Duration(days: 10)), day),
-        );
+        final from = day.subtract(const Duration(days: 10));
+        if (await call(s, () => s.closes(i, from, day))) {
+          _windows.putIfAbsent(i.id, () => []).add((from, day));
+        }
       }
     }
     return report;

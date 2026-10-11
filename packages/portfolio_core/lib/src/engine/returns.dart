@@ -134,12 +134,16 @@ Map<DateTime, List<Instrument>> historicalPriceNeeds({
   final out = <DateTime, List<Instrument>>{};
   for (final p in Period.values.where((p) => p != Period.lifetime)) {
     final b = baselineFor(p, today, calendar);
-    if (b.isBefore(first) || out.containsKey(b)) continue;
-    final held = [
+    if (b.isBefore(first)) continue;
+    // Daily asks for the latest weekday, not the latest known close, so the
+    // fetch discovers sessions the app has not seen yet.
+    final day = p == Period.daily ? weekdayBefore(today) : b;
+    final held = {
+      ...?out[day],
       for (final pos in replay(transactions, through: b).positions.values)
         if (pos.quantity > Decimal.zero) pos.instrument,
-    ];
-    if (held.isNotEmpty) out[b] = held;
+    };
+    if (held.isNotEmpty) out[day] = held.toList();
   }
   return out;
 }

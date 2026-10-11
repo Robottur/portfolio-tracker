@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:asset_portfolio/app/app_controller.dart';
 import 'package:asset_portfolio/app/device_prefs.dart';
 import 'package:asset_portfolio/main.dart';
+import 'package:asset_portfolio/ui/status_banner.dart';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -170,6 +171,20 @@ void main() {
     await inject(tester, [_sell('AAA', 8, '500', '18')]);
     expect(find.textContaining('Unavailable — ledger has'), findsWidgets);
     expect(find.text('Portfolio value'), findsNothing);
+  });
+
+  test('derived gold is labelled indicative, even as an intraday quote', () {
+    PriceObservation o(String source, PriceKind kind) => PriceObservation(
+      instrumentId: 'GOLD:GRAM',
+      price: _d('4000'),
+      sessionDate: DateTime.utc(2026, 10, 9),
+      quoteTime: now,
+      receivedAt: now,
+      source: source,
+      kind: kind,
+    );
+    expect(priceTag(o('gold', PriceKind.delayedQuote)), 'indicative');
+    expect(priceTag(o('yahoo', PriceKind.delayedQuote)), 'Delayed');
   });
 
   testWidgets('realized loss shows minus sign and words', (tester) async {

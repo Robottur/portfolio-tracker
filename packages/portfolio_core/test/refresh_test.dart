@@ -17,6 +17,7 @@ class FakeSource implements PriceSource {
 
   final List<String> calls = [];
   Object? failWith;
+  List<PriceObservation> Function(Instrument, DateTime, DateTime)? closesFn;
 
   PriceObservation _o(Instrument i, DateTime d, PriceKind k) =>
       PriceObservation(
@@ -47,7 +48,8 @@ class FakeSource implements PriceSource {
   ) async {
     calls.add('closes:${instrument.id}:${isoDate(from)}:${isoDate(to)}');
     if (failWith != null) throw failWith!;
-    return [_o(instrument, to, PriceKind.close)];
+    return closesFn?.call(instrument, from, to) ??
+        [_o(instrument, to, PriceKind.close)];
   }
 }
 
@@ -237,25 +239,97 @@ void main() {
     expect(src['gold']!.calls, hasLength(1));
   });
 
-  test('cached close within 7 days means no history call', () async {
+  test(
+    'exact-date cached close means no history call; an older one does not',
+    () async {
+      enabled = {'isyatirim'};
+      await store.addFetched([obs('XIST:AAA', '5', date(2026, 10, 9))]);
+      await rc.refresh(
+        current: [],
+        history: {
+          date(2026, 10, 9): [bist],
+        },
+      );
+      expect(totalCalls(), 0);
+      await rc.refresh(
+        current: [],
+        history: {
+          date(2026, 10, 12): [bist],
+        },
+        manual: true,
+      );
+      expect(src['isyatirim']!.calls, [
+        'closes:XIST:AAA:2026-10-02:2026-10-12',
+      ]);
+    },
+  );
+
+  test('a window fetched earlier covers its dates, and only those', () async {
     enabled = {'isyatirim'};
-    await store.addFetched([obs('XIST:AAA', '5', date(2026, 10, 2))]);
-    await rc.refresh(
+    final s = src['isyatirim']!..closesFn = (_, _, _) => [];
+    Future<void> need(DateTime d) => rc.refresh(
       current: [],
       history: {
-        date(2026, 10, 9): [bist],
-      },
-    );
-    expect(totalCalls(), 0);
-    await rc.refresh(
-      current: [],
-      history: {
-        date(2026, 10, 10): [bist],
+        d: [bist],
       },
       manual: true,
     );
-    expect(src['isyatirim']!.calls, hasLength(1));
+    await need(date(2026, 10, 4));
+    await need(date(2026, 10, 4));
+    await need(date(2026, 9, 24));
+    expect(s.calls, ['closes:XIST:AAA:2026-09-24:2026-10-04']);
+    await need(date(2026, 9, 20));
+    await need(date(2026, 10, 5));
+    expect(s.calls, hasLength(3));
   });
+
+  test(
+    'Daily follows new sessions day by day (Thu 10-01 → Tue 10-06)',
+    () async {
+      enabled = {'isyatirim', 'yahoo'};
+      final txs = [buy(on: date(2026, 9, 1))];
+      // The source knows a close for every weekday before the current day.
+      src['isyatirim']!.closesFn = (i, from, to) => [
+        for (var d = from; !d.isAfter(to); d = d.add(const Duration(days: 1)))
+          if (d.weekday <= DateTime.friday && d.isBefore(istanbulToday(now)))
+            obs(i.id, '${d.month}${d.day.toString().padLeft(2, '0')}', d),
+      ];
+      final expected = {
+        1: date(2026, 9, 30),
+        2: date(2026, 10, 1),
+        3: date(2026, 10, 2),
+        4: date(2026, 10, 2),
+        5: date(2026, 10, 2),
+        6: date(2026, 10, 5),
+      };
+      for (final e in expected.entries) {
+        now = DateTime.utc(2026, 10, e.key, 9);
+        final today = istanbulToday(now);
+        await rc.refresh(
+          current: [bist],
+          history: historicalPriceNeeds(
+            today: today,
+            transactions: txs,
+            calendar: TradingCalendar(store.knownBistTradingDays()),
+          ),
+        );
+        final r = computePeriod(
+          period: Period.daily,
+          today: today,
+          transactions: txs,
+          prices: store,
+          calendar: TradingCalendar(store.knownBistTradingDays()),
+        );
+        final b = e.value;
+        expect(r.baseline, b, reason: 'baseline on ${isoDate(today)}');
+        expect(
+          r.valueStart,
+          Decimal.parse('${b.month}${b.day.toString().padLeft(2, '0')}'),
+          reason: 'close used on ${isoDate(today)}',
+        );
+      }
+    },
+  );
 
   test('hostsFor is the union of domains', () {
     final a = FakeSource('a', {}, domains: ['x.example', 'y.example']);
