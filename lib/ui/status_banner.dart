@@ -41,11 +41,11 @@ class StatusBanner extends StatelessWidget {
   const StatusBanner({
     super.key,
     required this.controller,
-    required this.onOpenTransactions,
+    required this.onOpenIssues,
   });
 
   final AppController controller;
-  final VoidCallback onOpenTransactions;
+  final VoidCallback onOpenIssues;
 
   @override
   Widget build(BuildContext context) {
@@ -67,7 +67,7 @@ class StatusBanner extends StatelessWidget {
         Text('Showing previous data from ${_local(prev.scannedAt)}'),
       if (issues > 0)
         TextButton.icon(
-          onPressed: onOpenTransactions,
+          onPressed: onOpenIssues,
           icon: const Icon(Icons.warning_amber_outlined),
           label: Text('$issues ledger ${issues == 1 ? 'issue' : 'issues'}'),
         ),
@@ -76,6 +76,8 @@ class StatusBanner extends StatelessWidget {
           'Quotes: ${_range(times.first, times.last)} '
           '(latest ${_age(times.last, c.today)})',
         ),
+      if (c.pendingCount > 0)
+        Text('${c.pendingCount} entries waiting to be written'),
       for (final o in offline) Text(o),
       if (valuation.status == DataStatus.indicative ||
           valuation.status == DataStatus.manual)

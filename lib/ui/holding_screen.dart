@@ -75,10 +75,10 @@ class HoldingsView extends StatefulWidget {
   const HoldingsView({
     super.key,
     required this.controller,
-    required this.onOpenTransactions,
+    required this.onOpenIssues,
   });
   final AppController controller;
-  final VoidCallback onOpenTransactions;
+  final VoidCallback onOpenIssues;
 
   @override
   State<HoldingsView> createState() => _HoldingsViewState();
@@ -99,10 +99,7 @@ class _HoldingsViewState extends State<HoldingsView> {
           : holdingEntries(c, closed: _closed);
       final list = ListView(
         children: [
-          StatusBanner(
-            controller: c,
-            onOpenTransactions: widget.onOpenTransactions,
-          ),
+          StatusBanner(controller: c, onOpenIssues: widget.onOpenIssues),
           SwitchListTile(
             title: const Text('Show closed positions'),
             value: _closed,

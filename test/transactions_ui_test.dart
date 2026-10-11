@@ -275,6 +275,40 @@ void main() {
     expect(folder.records.length, before);
   });
 
+  testWidgets('a save the folder refuses is kept on this device, not offered '
+      'again', (tester) async {
+    final f = folder = _Unreachable();
+    await boot(tester);
+    f.refuse = true;
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await fill(tester, 'symbol', 'THYAO');
+    await fill(tester, 'quantity', '100');
+    await fill(tester, 'price', '10');
+    await tester.tap(button('Save'));
+    await settle(tester);
+    expect(
+      find.text(
+        'Saved on this device; it will be written to the folder when it is '
+        'reachable.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('symbol')), findsNothing); // form closed
+    expect(f.records, isEmpty);
+    final pending = [
+      for (final e in Directory('${tmp.path}/pending').listSync())
+        if (e is File && !e.uri.pathSegments.last.startsWith('.')) e,
+    ];
+    expect(pending, hasLength(1));
+    final saved = jsonDecode(utf8.decode(pending.single.readAsBytesSync()));
+    expect(pending.single.uri.pathSegments.last, saved['record_id']);
+    expect(c.pendingCount, 1);
+    await tester.tap(find.byIcon(Icons.dashboard_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('1 entries waiting to be written'), findsOneWidget);
+  });
+
   testWidgets('privacy mode hides amounts on every screen', (tester) async {
     late String txId;
     await boot(
@@ -328,4 +362,14 @@ void main() {
     expect(leaks(), isFalse);
     expect(find.textContaining('= '), findsNothing);
   });
+}
+
+class _Unreachable extends MemoryRecordFolder {
+  bool refuse = false;
+
+  @override
+  Future<bool> createRecordFile(String name, Uint8List bytes) async {
+    if (refuse) throw const FileSystemException('unreachable');
+    return super.createRecordFile(name, bytes);
+  }
 }

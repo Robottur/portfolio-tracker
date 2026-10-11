@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
 import '../platform/folder_access.dart';
@@ -31,18 +34,42 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
+  bool _problemsFirst = false;
   late final AppLifecycleListener _lifecycle;
+  late final Timer _prices;
 
   @override
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(onResume: widget.controller.onResume);
+    // Best effort; the coordinator throttles and records source errors.
+    _prices = Timer.periodic(
+      const Duration(minutes: 5),
+      (_) => widget.controller.refreshPrices().ignore(),
+    );
   }
 
   @override
   void dispose() {
+    _prices.cancel();
     _lifecycle.dispose();
     super.dispose();
+  }
+
+  void _go(int i) => setState(() {
+    _index = i;
+    _problemsFirst = false;
+  });
+
+  // Conflicts are decided in Transactions; every other issue is in Problems.
+  void _openIssues() {
+    final onlyConflicts = widget.controller.issues.every(
+      (i) => i.kind == IssueKind.competingLeaves,
+    );
+    setState(() {
+      _index = onlyConflicts ? 2 : 3;
+      _problemsFirst = !onlyConflicts;
+    });
   }
 
   @override
@@ -53,16 +80,14 @@ class _HomeShellState extends State<HomeShell> {
       for (var i = 0; i < _titles.length; i++) (_icons[i], _titles[i]),
     ];
     final body = switch (_index) {
-      0 => DashboardScreen(
-        controller: c,
-        onOpenTransactions: () => setState(() => _index = 2),
-      ),
-      1 => HoldingsView(
-        controller: c,
-        onOpenTransactions: () => setState(() => _index = 2),
-      ),
+      0 => DashboardScreen(controller: c, onOpenIssues: _openIssues),
+      1 => HoldingsView(controller: c, onOpenIssues: _openIssues),
       2 => TransactionsScreen(controller: c),
-      _ => SettingsScreen(controller: c, pick: widget.pick),
+      _ => SettingsScreen(
+        controller: c,
+        pick: widget.pick,
+        problemsFirst: _problemsFirst,
+      ),
     };
     return Scaffold(
       appBar: AppBar(
@@ -81,7 +106,7 @@ class _HomeShellState extends State<HomeShell> {
                 NavigationRail(
                   selectedIndex: _index,
                   labelType: NavigationRailLabelType.all,
-                  onDestinationSelected: (i) => setState(() => _index = i),
+                  onDestinationSelected: _go,
                   destinations: [
                     for (final (icon, label) in destinations)
                       NavigationRailDestination(
@@ -98,7 +123,7 @@ class _HomeShellState extends State<HomeShell> {
           ? null
           : NavigationBar(
               selectedIndex: _index,
-              onDestinationSelected: (i) => setState(() => _index = i),
+              onDestinationSelected: _go,
               destinations: [
                 for (final (icon, label) in destinations)
                   NavigationDestination(icon: Icon(icon), label: label),

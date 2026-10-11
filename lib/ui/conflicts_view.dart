@@ -88,11 +88,15 @@ class _ConflictsViewState extends State<ConflictsView> {
     for (final l in leaves) l.recordId,
   };
 
-  Future<void> _run(BuildContext context, Future<void> action) async {
+  Future<void> _run(BuildContext context, Future<bool> action) async {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
-      await action;
+      if (!await action) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text(AppController.savedLocallyMessage)),
+        );
+      }
     } on Object catch (e) {
       messenger.showSnackBar(
         SnackBar(

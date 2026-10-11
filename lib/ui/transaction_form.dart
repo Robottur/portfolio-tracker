@@ -210,11 +210,17 @@ class _TransactionFormState extends State<TransactionForm> {
       _saveError = null;
     });
     final nav = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final old = _old;
-      await (old == null
+      final written = await (old == null
           ? _c.addTransaction(tx)
           : _c.correctTransaction(old.id, tx, expectedRecordId: old.recordId));
+      if (!written) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text(AppController.savedLocallyMessage)),
+        );
+      }
       if (mounted) nav.pop();
     } on Object catch (e) {
       if (!mounted) return;

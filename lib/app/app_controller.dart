@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:decimal/decimal.dart';
@@ -53,10 +54,14 @@ class AppController extends ChangeNotifier {
   LedgerScanner? _scanner;
   Future<void> _tail = Future.value();
   Future<void>? _resuming;
+  Future<void>? _refreshing;
   bool _reopenFailed = false;
 
   ScanResult? scan;
   ScanResult? lastValidScan;
+
+  /// Records saved on this device but not yet verified in the folder.
+  int pendingCount = 0;
 
   Iterable<PriceSource> _enabledSources() =>
       _sources.where((s) => prefs.enabledSources.contains(s.id));
@@ -85,10 +90,13 @@ class AppController extends ChangeNotifier {
     calendar: _calendar,
   );
 
-  int get issueCount =>
-      (scan?.ledger.issues.length ?? 0) +
-      (scan?.fileIssues.length ?? 0) +
-      displayReplay.issues.length;
+  List<LedgerIssue> get issues => [
+    ...?scan?.ledger.issues,
+    ...?scan?.fileIssues,
+    ...displayReplay.issues,
+  ];
+
+  int get issueCount => issues.length;
 
   bool get displayIncomplete =>
       (scan != null && !scan!.complete && lastValidScan == null) ||
@@ -113,6 +121,8 @@ class AppController extends ChangeNotifier {
       final f = await reopen(saved);
       if (f == null) throw StateError(_folderUnreadable);
       await openFolder(f, saved);
+      // Startup counts as a resume: publish pending records, refresh prices.
+      unawaited(onResume());
     } on Object {
       _reopenFailed = true;
       notifyListeners();
@@ -126,10 +136,19 @@ class AppController extends ChangeNotifier {
     return r;
   }
 
-  /// Publishes a record and rescans; callers get PublishException on failure.
-  Future<void> publishRecord(LedgerRecord r) => _serial(() async {
+  static const savedLocallyMessage =
+      'Saved on this device; it will be written to the folder when it is reachable.';
+
+  /// Publishes a record and rescans. False: the folder write failed but the
+  /// record is kept pending on this device and published on resume; saving
+  /// it again would count it twice. Other failures throw.
+  Future<bool> publishRecord(LedgerRecord r) => _serial(() async {
     try {
       await _publisher!.publish(r);
+      return true;
+    } on Object {
+      if (await _pending.get(r.recordId) != null) return false;
+      rethrow;
     } finally {
       await _rescanNow();
     }
@@ -181,6 +200,7 @@ class AppController extends ChangeNotifier {
       _publisher = Publisher(f, _pending);
       _reopenFailed = false;
       if (result.complete) lastValidScan = result;
+      pendingCount = (await _pending.keys()).length;
       notifyListeners();
     });
   }
@@ -190,6 +210,7 @@ class AppController extends ChangeNotifier {
   Future<void> _rescanNow() async {
     final s = _scanner;
     if (s == null) return;
+    pendingCount = (await _pending.keys()).length;
     final result = await s.scan(nowUtc: _nowUtc());
     scan = result;
     if (result.complete) lastValidScan = result;
@@ -226,7 +247,13 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshPrices({bool manual = false}) async {
+  /// A call while one runs (manual or not) waits for that run: concurrent
+  /// runs would race on the price cache file.
+  Future<void> refreshPrices({bool manual = false}) =>
+      _refreshing ??= _refreshPrices(manual)
+          .whenComplete(() => _refreshing = null);
+
+  Future<void> _refreshPrices(bool manual) async {
     if (prefs.enabledSources.isEmpty) return;
     final txs = transactions;
     await refresher.refresh(
@@ -293,7 +320,7 @@ class AppController extends ChangeNotifier {
     ];
   }
 
-  Future<void> addTransaction(Transaction t) async => _write(
+  Future<bool> addTransaction(Transaction t) async => _write(
     t,
     null,
     (d) => LedgerRecord.newUpsert(
@@ -304,7 +331,7 @@ class AppController extends ChangeNotifier {
     ),
   );
 
-  Future<void> correctTransaction(
+  Future<bool> correctTransaction(
     String transactionId,
     Transaction t, {
     String? expectedRecordId,
@@ -324,7 +351,7 @@ class AppController extends ChangeNotifier {
     );
   }
 
-  Future<void> voidTransaction(
+  Future<bool> voidTransaction(
     String transactionId, {
     String? expectedRecordId,
   }) async {
@@ -343,7 +370,7 @@ class AppController extends ChangeNotifier {
   }
 
   /// Supersedes every competing leaf; a null [chosen] voids the transaction.
-  Future<void> resolveConflict(
+  Future<bool> resolveConflict(
     String transactionId,
     Transaction? chosen, {
     Set<String>? expectedLeafIds,
@@ -404,7 +431,8 @@ class AppController extends ChangeNotifier {
     return leaf;
   }
 
-  Future<void> _write(
+  /// See [publishRecord] for what false means.
+  Future<bool> _write(
     Transaction? t,
     String? replacing,
     LedgerRecord Function(String portfolioId) build,

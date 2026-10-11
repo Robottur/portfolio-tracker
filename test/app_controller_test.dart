@@ -4,8 +4,11 @@ import 'dart:typed_data';
 
 import 'package:asset_portfolio/app/app_controller.dart';
 import 'package:asset_portfolio/app/device_prefs.dart';
+import 'package:asset_portfolio/main.dart';
 import 'package:decimal/decimal.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -174,14 +177,80 @@ void main() {
       final f = _Flaky();
       await c.openFolder(f, 'mem', createName: 'Main');
       f.broken = true;
-      await expectLater(
-        c.publishRecord(rec(c)),
-        throwsA(anything),
-      ); // stays pending
+      expect(await c.publishRecord(rec(c)), isFalse); // stays pending
+      expect(c.pendingCount, 1);
       await c.onResume();
       expect(c.folderAccessLost, isTrue);
     },
   );
+
+  test(
+    'startup restore publishes pending records with no lifecycle event',
+    () async {
+      final f = _Flaky();
+      final c1 = await make();
+      await c1.openFolder(f, 'mem', createName: 'Main');
+      f.broken = true;
+      try {
+        await c1.publishRecord(rec(c1));
+      } on Object {
+        // kept pending either way
+      }
+      f.broken = false;
+      final c2 = await make();
+      await c2.restore((_) async => f);
+      await c2.rescan(); // queued behind the startup work
+      expect(f.records, hasLength(1));
+      expect(c2.transactions, hasLength(1));
+      expect(c2.pendingCount, 0);
+    },
+  );
+
+  Future<AppController> withHolding(
+    Future<http.Response> Function(http.Request) net,
+  ) async {
+    final c = AppController(
+      prefs: await DevicePrefs.load(),
+      privateDir: tmp,
+      network: MockClient(net),
+      nowUtc: () => DateTime.utc(2026, 10, 10, 12),
+    );
+    await c.openFolder(MemoryRecordFolder(), 'mem', createName: 'Main');
+    await c.publishRecord(rec(c));
+    await c.prefs.setEnabledSources({'yahoo'});
+    return c;
+  }
+
+  test('concurrent price refreshes share one run', () async {
+    final gate = Completer<void>();
+    final c = await withHolding((_) async {
+      calls++;
+      await gate.future;
+      return http.Response('', 500);
+    });
+    final a = c.refreshPrices();
+    final b = c.refreshPrices(manual: true);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    gate.complete();
+    await Future.wait([a, b]);
+    expect(calls, 1);
+  });
+
+  testWidgets('the home screen refreshes prices every 5 minutes', (t) async {
+    late AppController c;
+    await t.runAsync(() async {
+      c = await withHolding((_) async {
+        calls++;
+        return http.Response('', 500);
+      });
+    });
+    await t.pumpWidget(AssetPortfolioApp(controller: c));
+    await t.pump();
+    expect(calls, 0);
+    await t.pump(const Duration(minutes: 5));
+    expect(calls, 1);
+    await t.pumpWidget(const SizedBox());
+  });
 
   test('create into a folder that has records is refused', () async {
     final c = await make();

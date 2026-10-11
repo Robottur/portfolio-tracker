@@ -7,22 +7,19 @@ import '../platform/folder_access.dart';
 import 'privacy.dart';
 import 'status_banner.dart';
 
-const _problemKinds = {
-  IssueKind.badFile,
-  IssueKind.missingFile,
-  IssueKind.contentConflict,
-  IssueKind.unsupportedVersion,
-};
-
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     required this.controller,
     this.pick = pickRecordFolder,
+    this.problemsFirst = false,
   });
 
   final AppController controller;
   final Future<PickedFolder?> Function() pick;
+
+  /// Opened from the issue link: show Problems at the top.
+  final bool problemsFirst;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -144,11 +141,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final scan = _c.scan;
-    final problems = [
-      ...?scan?.fileIssues,
-      for (final i in scan?.ledger.issues ?? const <LedgerIssue>[])
-        if (_problemKinds.contains(i.kind)) i,
-    ];
+    final problems = _c.issues;
     final anyEnabled = _c.prefs.enabledSources.isNotEmpty;
     final masked = PrivacyScope.maskedOf(context);
     final raw = _price.text.trim().isEmpty
@@ -164,6 +157,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final built = _instrument();
     final isGold = _class == AssetClass.gold;
     final heading = Theme.of(context).textTheme.titleMedium;
+    final problemsSection = [
+      Text('Problems', style: heading),
+      if (problems.isEmpty) const Text('No problems found.'),
+      for (final i in problems)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(_problemName(i)),
+          subtitle: Text(i.message),
+        ),
+      if (problems.any((i) => i.kind == IssueKind.missingFile))
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton(
+            onPressed: () => _run(() async {
+              final n = await _c.republishMissing();
+              return 'Restored $n ${n == 1 ? 'record' : 'records'}';
+            }),
+            child: const Text('Restore missing records'),
+          ),
+        ),
+    ];
 
     return ListenableBuilder(
       listenable: _c,
@@ -171,6 +185,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           if (_message != null) Card(child: ListTile(title: Text(_message!))),
+          if (widget.problemsFirst) ...[
+            ...problemsSection,
+            const Divider(height: 32),
+          ],
           Text('Folder', style: heading),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -297,26 +315,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }),
               ),
             ),
-          const Divider(height: 32),
-          Text('Problems', style: heading),
-          if (problems.isEmpty) const Text('No problems found.'),
-          for (final i in problems)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(_problemName(i)),
-              subtitle: Text(i.message),
-            ),
-          if (problems.any((i) => i.kind == IssueKind.missingFile))
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton(
-                onPressed: () => _run(() async {
-                  final n = await _c.republishMissing();
-                  return 'Restored $n ${n == 1 ? 'record' : 'records'}';
-                }),
-                child: const Text('Restore missing records'),
-              ),
-            ),
+          if (!widget.problemsFirst) ...[
+            const Divider(height: 32),
+            ...problemsSection,
+          ],
           const Divider(height: 32),
           Text('Backup', style: heading),
           Wrap(

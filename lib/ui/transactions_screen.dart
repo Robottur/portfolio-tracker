@@ -222,7 +222,14 @@ class TransactionDetail extends StatelessWidget {
     );
     if (ok != true) return;
     try {
-      await controller.voidTransaction(entry.id, expectedRecordId: recordId);
+      if (!await controller.voidTransaction(
+        entry.id,
+        expectedRecordId: recordId,
+      )) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text(AppController.savedLocallyMessage)),
+        );
+      }
       if (context.mounted) nav.pop();
     } on Object catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(_msg(e))));

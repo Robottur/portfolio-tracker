@@ -121,6 +121,48 @@ void main() {
     expect(find.text('Restore missing records'), findsNothing);
   });
 
+  testWidgets(
+    'replay issues are listed under Problems; the banner opens them',
+    (t) async {
+      await boot(
+        t,
+        seed: () async {
+          await c.addTransaction(_buy('AAA'));
+          final pid = c.scan!.descriptor!.portfolioId;
+          for (final day in [8, 9]) {
+            final r = LedgerRecord.newUpsert(
+              portfolioId: pid,
+              deviceId: c.prefs.deviceId,
+              transaction: Transaction.sell(
+                instrument: Instrument.create(AssetClass.bistShare, 'AAA'),
+                date: DateTime.utc(2026, 10, day),
+                dayOrder: 10,
+                quantity: Decimal.parse('50'),
+                unitPrice: Decimal.parse('10'),
+                fees: Decimal.zero,
+              ),
+              now: DateTime.utc(2026, 10, day),
+            );
+            folder.records[r.fileName] = r.encode();
+          }
+          await c.rescan();
+        },
+      );
+      void expectListed() {
+        expect(find.text('Sell quantity exceeds holding'), findsNWidgets(2));
+        expect(find.text('XIST:AAA, 2026-10-08'), findsOneWidget);
+        expect(find.text('XIST:AAA, 2026-10-09'), findsOneWidget);
+      }
+
+      expectListed();
+      await t.tap(find.byIcon(Icons.dashboard_outlined));
+      await t.pumpAndSettle();
+      await t.tap(find.text('2 ledger issues'));
+      await t.pumpAndSettle();
+      expectListed();
+    },
+  );
+
   testWidgets('manual price: inline errors, echo, list, delete', (t) async {
     await boot(t);
     await t.enterText(find.byKey(const Key('manualSymbol')), 'bad symbol!');

@@ -18,11 +18,11 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
     required this.controller,
-    required this.onOpenTransactions,
+    required this.onOpenIssues,
   });
 
   final AppController controller;
-  final VoidCallback onOpenTransactions;
+  final VoidCallback onOpenIssues;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -67,10 +67,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          StatusBanner(
-            controller: c,
-            onOpenTransactions: widget.onOpenTransactions,
-          ),
+          StatusBanner(controller: c, onOpenIssues: widget.onOpenIssues),
           Align(
             alignment: Alignment.centerLeft,
             child: Tooltip(
