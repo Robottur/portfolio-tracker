@@ -1,0 +1,76 @@
+# Asset Portfolio
+
+A private, personal asset tracker for Linux, Windows and Android. You record
+buys, sells, share dividends and splits for BIST shares, foreign currencies,
+crypto and gold (grams); the app shows holdings, average cost, realized and
+unrealized gain in TRY, and a Modified Dietz return estimate per period. It is
+a tracker, not a trading tool: there is no cash balance.
+
+## Privacy
+
+- A fresh install makes no network request. Each price source is a separate,
+  per-device opt-in.
+- When a source is enabled, only the requested symbols (plus ordinary HTTP
+  metadata such as IP address and user agent) are sent to that source's domain.
+  Quantities, costs and records are never sent.
+- No telemetry, analytics, crash reporting, ads or update checks. No accounts
+  or API keys.
+- Your data is plaintext JSON in a folder you choose and sync yourself with
+  Syncthing. There is no app server and no encryption at rest.
+- Price sources are unofficial free endpoints (except TCMB); they can break or
+  change without notice. Manual price entry always works.
+- Privacy mode masks all amounts on screen.
+
+## Build
+
+Toolchain: Flutter 3.47.7 (Dart 3.13.5).
+
+    flutter pub get
+    flutter analyze && flutter test
+    (cd packages/portfolio_core && dart test)
+
+Linux (on Linux):
+
+    flutter build linux --release
+    # build/linux/x64/release/bundle/asset_portfolio
+
+Windows (on Windows):
+
+    flutter build windows --release
+
+Android APK. Create the signing key once, outside the repository, and keep it
+for all future upgrades:
+
+    keytool -genkey -v -keystore <path-outside-repo>/portfolio-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias portfolio
+    cp android/key.properties.example android/key.properties   # then fill in the values
+    flutter build apk --release
+    # build/app/outputs/flutter-apk/app-release.apk
+
+`android/key.properties`, `*.jks` and `*.keystore` are git-ignored. Without
+`key.properties` the release build is signed with debug keys (not for
+distribution). Verify permissions (expect only `INTERNET` plus Flutter's
+`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`):
+
+    $ANDROID_HOME/build-tools/<ver>/aapt2 dump permissions build/app/outputs/flutter-apk/app-release.apk
+
+## Syncthing setup
+
+1. Install Syncthing on each desktop. On Android use Syncthing-Fork (the
+   official Syncthing Android app was discontinued in 2024).
+2. Create one shared folder and share it between your devices.
+3. In the app, choose that folder on each device. On Android the app keeps
+   access through the system folder picker; if the permission is revoked, the
+   app shows a setup screen with `Choose folder again`.
+
+## Minimum versions
+
+- Android: minSdk 24 (Android 7.0), the Flutter 3.47.7 default
+  (`flutter.minSdkVersion`); all Android plugins used require 24 or lower.
+  Target/compile SDK 36.
+- Desktop: Flutter 3.47.7 desktop requirements for Linux (GTK 3) and Windows
+  (64-bit Windows 10 or later); not verified beyond the checklist in
+  `docs/testing/release-checklist.md`.
+
+## Release testing
+
+See `docs/testing/release-checklist.md`. Design: `docs/superpowers/specs/`.

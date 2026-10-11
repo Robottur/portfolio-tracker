@@ -1,0 +1,5 @@
+# Copy to android/key.properties (git-ignored) and fill in. Keep the keystore outside the repository.
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=portfolio
+storeFile=/absolute/path/outside/repo/portfolio-release.jks
