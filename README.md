@@ -62,6 +62,15 @@ distribution). Verify permissions (expect only `INTERNET` plus Flutter's
    access through the system folder picker; if the permission is revoked, the
    app shows a setup screen with `Choose folder again`.
 
+## Restoring on a new device
+
+Copy the exported backup folder to the new device (or share it there), then
+choose `Open existing portfolio` and pick that folder. Do not choose `Create
+portfolio` and then `Restore from…`: a new portfolio has a different identity,
+so restore refuses with "Destination belongs to a different portfolio" by
+design. `Restore from…` is for putting missing records back into the same
+portfolio.
+
 ## Minimum versions
 
 - Android: minSdk 24 (Android 7.0), the Flutter 3.47.7 default
