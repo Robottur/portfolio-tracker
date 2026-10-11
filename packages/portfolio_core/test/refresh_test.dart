@@ -728,6 +728,54 @@ void main() {
       expect(await irc.refreshInflation(from: date(2026, 1, 1)), 'tcmbcpi');
     });
 
+    test('evds without a key is not configured, not a failure', () async {
+      var key = '';
+      var requests = 0;
+      final ev = EvdsSource(
+        MockClient((_) async {
+          requests++;
+          return http.Response(
+            '{"items":[{"Tarih":"2026-7","TP_FG_J0":"100"},'
+            '{"Tarih":"2026-8","TP_FG_J0":"101.84"}]}',
+            200,
+          );
+        }),
+        key: () => key,
+        nowUtc: () => now,
+      );
+      final r = RefreshCoordinator(
+        sources: [ev, tcmb],
+        enabledSourceIds: () => {'evds', 'tcmbcpi'},
+        store: store,
+        nowUtc: () => now,
+      );
+      expect(await r.refreshInflation(from: date(2026, 1, 1)), 'tcmbcpi');
+      expect(requests, 0);
+      expect(r.status['evds']!.retryNotBefore, isNull);
+      expect(r.status['evds']!.lastError, 'Add your EVDS key in Settings');
+      key = 'abc';
+      expect(
+        await r.refreshInflation(from: date(2026, 1, 1), manual: true),
+        'evds',
+      );
+      expect(requests, 1);
+      expect(store.cpi.months['2026-08']!.source, 'evds');
+    });
+
+    test('failures do not use up the day', () async {
+      enabled = {'tcmbcpi'};
+      tcmb.fail = true;
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), isNull);
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), isNull);
+      expect(tcmb.calls, 1); // still in back-off
+      now = now.add(const Duration(minutes: 2));
+      tcmb.fail = false;
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), 'tcmbcpi');
+      expect(tcmb.calls, 2);
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), isNull);
+      expect(tcmb.calls, 2);
+    });
+
     test('changed page keeps stored months', () async {
       await store.setCpi({'2026-07': Decimal.parse('1.78')}, 'tcmb');
       final page = File('test/fixtures/tcmb_cpi_page.html')

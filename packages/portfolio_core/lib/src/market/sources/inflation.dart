@@ -105,6 +105,9 @@ class EvdsSource with _NoPrices implements InflationSource {
   final DateTime Function() _now;
   final Duration timeout;
 
+  /// False when no key is set; the source is then not configured, not failing.
+  bool get hasKey => (_key()?.trim() ?? '').isNotEmpty;
+
   @override
   String get id => 'evds';
   @override

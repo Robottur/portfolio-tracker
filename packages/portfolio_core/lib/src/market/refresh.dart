@@ -154,7 +154,12 @@ class RefreshCoordinator {
       if (s is! InflationSource || !on.contains(id)) continue;
       final retry = _status[id]?.retryNotBefore;
       if (retry != null && nowUtc().isBefore(retry)) continue;
-      _lastInflationDay = today; // only a real attempt uses up the day
+      if (s is EvdsSource && !s.hasKey) {
+        // Not configured is not a failure: no back-off, so a new key works at once.
+        (_status.putIfAbsent(id, SourceStatus.new)).lastError =
+            'Add your EVDS key in Settings';
+        continue;
+      }
       final ok = await _attempt(s, denied, [], () async {
         final months = await s.monthly(from);
         try {
@@ -163,7 +168,10 @@ class RefreshCoordinator {
           throw SourceException(id, 'Unusable inflation value');
         }
       });
-      if (ok) return id;
+      if (ok) {
+        _lastInflationDay = today; // failures are governed by back-off
+        return id;
+      }
     }
     return null;
   }
