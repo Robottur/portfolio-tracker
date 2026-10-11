@@ -477,7 +477,7 @@ void main() {
           isA<SourceException>().having(
             (e) => e.message,
             'message',
-            startsWith('Rate limited; try again after'),
+            'Rate limited; try again after 15:01',
           ),
         ),
       );

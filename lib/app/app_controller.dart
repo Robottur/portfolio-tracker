@@ -196,7 +196,7 @@ class AppController extends ChangeNotifier {
       }
       // Loaded whatever the source settings: manual prices live in this store
       // and a later setManual rewrites all of them.
-      await prices.load();
+      await _pricesSerial(prices.load);
       await prefs.setFolderLocation(location);
       if (lastValidScan?.descriptor?.portfolioId != descriptor.portfolioId) {
         lastValidScan = null;
@@ -267,12 +267,22 @@ class AppController extends ChangeNotifier {
     return r;
   }
 
+  String sourceLabel(String id) =>
+      _sources.where((s) => s.id == id).firstOrNull?.label ?? id;
+
   /// The source that would answer for [c] on [date], enabled or not.
   PriceSource priceSourceFor(AssetClass c, DateTime date) {
     final id = date == today
         ? RefreshCoordinator.latestSourceId(c, prefs.enabledSources)
         : RefreshCoordinator.closesSourceId(c);
     return _sources.firstWhere((s) => s.id == id);
+  }
+
+  static bool _newer(PriceObservation a, PriceObservation b) {
+    final d = a.sessionDate.compareTo(b.sessionDate);
+    if (d != 0) return d > 0;
+    final qa = a.quoteTime, qb = b.quoteTime;
+    return qa != null && (qb == null || qa.isAfter(qb));
   }
 
   /// The price for [inst] on [date]: the latest quote for today, otherwise the
@@ -290,7 +300,9 @@ class AppController extends ChangeNotifier {
     PriceObservation? pick;
     if (date == today) {
       got = await refresher.fetchOnce(src, () => src.latest([inst]));
-      pick = got.isEmpty ? null : got.first;
+      for (final o in got) {
+        if (pick == null || _newer(o, pick)) pick = o;
+      }
     } else {
       final from = date.subtract(const Duration(days: 10));
       got = await refresher.fetchOnce(src, () => src.closes(inst, from, date));

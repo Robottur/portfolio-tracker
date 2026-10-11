@@ -76,11 +76,12 @@ class RefreshCoordinator {
     final st = _status.putIfAbsent(source.id, SourceStatus.new);
     final retry = st.retryNotBefore;
     if (retry != null && nowUtc().isBefore(retry)) {
-      final t = retry.toUtc();
+      // Istanbul time, UTC+3 (same convention as istanbulToday).
+      final t = retry.toUtc().add(const Duration(hours: 3));
       String two(int n) => n.toString().padLeft(2, '0');
       throw SourceException(
         source.id,
-        'Rate limited; try again after ${two(t.hour)}:${two(t.minute)} UTC',
+        'Rate limited; try again after ${two(t.hour)}:${two(t.minute)}',
       );
     }
     try {

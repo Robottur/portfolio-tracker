@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -248,6 +249,11 @@ void main() {
     await t.pump();
     expect(calls, 0);
     await t.pump(const Duration(minutes: 5));
+    // The refresh queues behind the price-cache load, which settles in real time.
+    await t.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await t.pump();
     expect(calls, 1);
     await t.pumpWidget(const SizedBox());
   });
@@ -351,6 +357,64 @@ void main() {
       ]);
       expect(r.every((o) => o != null), isTrue);
       expect(maxRunning, 1);
+    });
+
+    test('today picks the newest of the rows and caches them all', () async {
+      final prefs = await DevicePrefs.load();
+      await prefs.setEnabledSources({'tefas'});
+      final c = AppController(
+        prefs: prefs,
+        privateDir: tmp,
+        network: MockClient((_) async {
+          // Oldest first, so "first" is not the newest.
+          final j = jsonDecode(fx('tefas_tte_yat.json')) as Map;
+          j['resultList'] = (j['resultList'] as List).reversed.toList();
+          return http.Response(
+            jsonEncode(j),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        nowUtc: () => DateTime.utc(2026, 10, 10, 12),
+      );
+      final tte = Instrument.create(AssetClass.fund, 'TTE');
+      final o = await c.fetchPriceFor(tte, c.today);
+      expect(o!.sessionDate, DateTime.utc(2026, 10, 9));
+      expect(
+        c.prices
+            .closeOnOrBefore(tte.id, DateTime.utc(2026, 10, 5))
+            ?.sessionDate,
+        DateTime.utc(2026, 10, 5),
+      );
+    });
+
+    test('a price-cache load waits for a queued fetch', () async {
+      final gate = Completer<void>();
+      final prefs = await DevicePrefs.load();
+      await prefs.setEnabledSources({'yahoo'});
+      final c = AppController(
+        prefs: prefs,
+        privateDir: tmp,
+        network: MockClient((_) async {
+          await gate.future;
+          return http.Response(
+            fx('yahoo_thyao.json'),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        nowUtc: () => DateTime.utc(2026, 10, 9, 12),
+      );
+      final fetch = c.fetchPriceFor(thyao, c.today);
+      var opened = false;
+      final open = c
+          .openFolder(MemoryRecordFolder(), 'mem', createName: 'Main')
+          .then((_) => opened = true);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(opened, isFalse);
+      gate.complete();
+      await fetch;
+      await open;
     });
 
     test('a disabled source throws before any request', () async {

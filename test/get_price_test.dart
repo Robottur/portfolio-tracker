@@ -174,6 +174,68 @@ void main() {
     expect(price(tester), '');
   });
 
+  testWidgets('gold consent names gold prices, not the symbol', (tester) async {
+    await boot(tester, routes);
+    await tester.tap(find.byKey(const Key('assetClass')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gold').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Get price'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'This sends gold prices to query1.finance.yahoo.com. '
+        'Enable Gold (derived) and fetch?',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Cancel'));
+    await settle(tester);
+  });
+
+  testWidgets('the note names the source that answered', (tester) async {
+    final gate = Completer<void>();
+    await boot(
+      tester,
+      (u) => _json(
+        u.host == 'query1.finance.yahoo.com'
+            ? _fx('yahoo_usdtry.json')
+            : '<x/>',
+      ),
+      enabled: {'tcmb'},
+      gate: gate.future,
+      seed: () async {
+        await c.addTransaction(
+          Transaction.buy(
+            instrument: Instrument.create(AssetClass.fx, 'USD'),
+            date: DateTime.utc(2026, 10, 1),
+            dayOrder: 10,
+            quantity: Decimal.parse('10'),
+            unitPrice: Decimal.parse('1'),
+            fees: Decimal.zero,
+          ),
+        );
+        // Holds the price queue so the press below is decided later.
+        unawaited(c.refreshPrices(manual: true));
+      },
+    );
+    await tester.tap(find.byKey(const Key('assetClass')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Currency').last);
+    await tester.pumpAndSettle();
+    await fill(tester, 'symbol', 'USD');
+    await tester.tap(find.text('Get price'));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await c.prefs.setEnabledSources({'tcmb', 'yahoo'});
+      gate.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await settle(tester);
+    expect(find.textContaining('Yahoo Finance'), findsOneWidget);
+    expect(find.textContaining('TCMB'), findsNothing);
+  });
+
   testWidgets('a gold price is cut to 8 fractional digits', (tester) async {
     await boot(
       tester,

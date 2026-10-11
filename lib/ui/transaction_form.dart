@@ -242,8 +242,8 @@ class _TransactionFormState extends State<TransactionForm> {
         context: context,
         builder: (ctx) => AlertDialog(
           content: Text(
-            'This sends ${inst.code} to ${src.domains.join(', ')}. '
-            'Enable ${src.label} and fetch?',
+            'This sends ${inst.assetClass == AssetClass.gold ? 'gold prices' : inst.code} '
+            'to ${src.domains.join(', ')}. Enable ${src.label} and fetch?',
           ),
           actions: [
             TextButton(
@@ -275,7 +275,7 @@ class _TransactionFormState extends State<TransactionForm> {
         if (obs == null) error = 'No price found for that date';
       }
     } on SourceException catch (e) {
-      error = '${src.label}: ${e.message}';
+      error = '${_c.sourceLabel(e.sourceId)}: ${e.message}';
     } on Object {
       error = 'Could not get a price';
     }
@@ -290,7 +290,7 @@ class _TransactionFormState extends State<TransactionForm> {
         _price.text = roundHalfEven(obs.price, 8).toString();
         final tag = priceTag(obs);
         _priceNote =
-            '${src.label} · ${stamp(obs)}${tag == null ? '' : ' · $tag'}';
+            '${_c.sourceLabel(obs.source)} · ${stamp(obs)}${tag == null ? '' : ' · $tag'}';
       }
     });
   }
