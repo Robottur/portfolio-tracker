@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
+import 'asset_labels.dart';
 import 'conflicts_view.dart';
 import 'privacy.dart';
 import 'transaction_form.dart';
@@ -13,7 +14,10 @@ Widget txFields(Transaction t) => Column(
   crossAxisAlignment: CrossAxisAlignment.start,
   children: [
     _row('Type', Text(t.type.json)),
-    _row('Asset', Text('${t.instrument.assetClass.json} ${t.instrument.code}')),
+    _row(
+      'Asset',
+      Text('${assetClassLabel(t.instrument.assetClass)} ${t.instrument.code}'),
+    ),
     _row('Date', Text(isoDate(t.effectiveDate))),
     _row('Day order', Text('${t.dayOrder}')),
     if (t.quantity != null)

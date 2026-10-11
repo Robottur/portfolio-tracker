@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
+import 'asset_labels.dart';
 import 'privacy.dart';
 import 'status_banner.dart';
 
@@ -199,7 +200,7 @@ class HoldingDetail extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           Text(
-            '${p.instrument.code} · ${p.instrument.assetClass.json}',
+            '${p.instrument.code} · ${assetClassLabel(p.instrument.assetClass)}',
             style: Theme.of(context).textTheme.titleLarge,
           ),
           _row('Instrument', Text(instrumentId)),

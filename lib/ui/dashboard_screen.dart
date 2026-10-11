@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
+import 'asset_labels.dart';
 import 'holding_screen.dart';
 import 'privacy.dart';
 import 'status_banner.dart';
@@ -128,7 +129,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (entries.isEmpty && !c.displayIncomplete)
             const Text('No holdings'),
           for (final cls in byClass.entries) ...[
-            Text(cls.key.json, style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              assetClassHeading(cls.key),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             for (final e in cls.value)
               HoldingTile(
                 entry: e,

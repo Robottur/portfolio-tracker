@@ -170,10 +170,47 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('assetClass')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('GOLD').last);
+    await tester.tap(find.text('Gold').last);
     await tester.pumpAndSettle();
     expect(find.text('grams'), findsOneWidget);
     expect(find.text('GRAM'), findsWidgets);
+  });
+
+  testWidgets('BUY Fund tte saves TEFAS:TTE; only BUY and SELL offered', (
+    tester,
+  ) async {
+    await boot(tester);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('DIVIDEND'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('assetClass')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fund').last);
+    await tester.pumpAndSettle();
+    for (final t in ['DIVIDEND', 'SPLIT']) {
+      expect(
+        tester
+            .widget<SegmentedButton<TxType>>(
+              find.byType(SegmentedButton<TxType>),
+            )
+            .segments
+            .firstWhere((s) => s.label is Text && (s.label! as Text).data == t)
+            .enabled,
+        isFalse,
+      );
+    }
+    expect(find.text('Fund shares'), findsOneWidget);
+    expect(find.text('Fund code, e.g. TTE'), findsOneWidget);
+    await fill(tester, 'symbol', ' tte ');
+    await fill(tester, 'quantity', '100');
+    await fill(tester, 'price', '1,157776');
+    await tester.tap(button('Save'));
+    await settle(tester);
+    final tx = records().single['transaction']! as Map<String, Object?>;
+    expect(tx['type'], 'BUY');
+    expect(tx['unit_price'], '1.157776');
+    expect((tx['instrument']! as Map)['instrument_id'], 'TEFAS:TTE');
   });
 
   testWidgets('correction supersedes the leaf', (tester) async {

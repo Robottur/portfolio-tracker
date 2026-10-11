@@ -4,6 +4,7 @@ import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
 import '../platform/folder_access.dart';
+import 'asset_labels.dart';
 import 'privacy.dart';
 import 'status_banner.dart';
 
@@ -250,7 +251,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             decoration: const InputDecoration(labelText: 'Asset class'),
             items: [
               for (final c in AssetClass.values)
-                DropdownMenuItem(value: c, child: Text(c.json)),
+                DropdownMenuItem(value: c, child: Text(assetClassLabel(c))),
             ],
             onChanged: (c) => setState(() => _class = c!),
           ),

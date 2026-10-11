@@ -86,13 +86,18 @@ void main() {
           s.title is Text &&
           (s.title as Text).data != 'Hide amounts by default',
     );
-    expect(sources.length, 5);
+    expect(sources.length, 6);
     expect(sources.every((s) => !s.value), isTrue);
     expect(
       find.text(
         'Sends: asset symbols. Contacts: api.btcturk.com. '
         'Your quantities and costs are never sent.',
       ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('www.tefas.gov.tr'), findsOneWidget);
+    expect(
+      find.widgetWithText(SwitchListTile, 'TEFAS (funds)'),
       findsOneWidget,
     );
     await t.tap(find.widgetWithText(SwitchListTile, 'BtcTurk'));

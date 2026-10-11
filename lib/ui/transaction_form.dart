@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
+import 'asset_labels.dart';
 import 'privacy.dart';
 import 'transactions_screen.dart';
 
@@ -247,6 +248,7 @@ class _TransactionFormState extends State<TransactionForm> {
         tx != null && errors.isEmpty && issues.isEmpty && !readOnly && !_saving;
     final isGold = _class == AssetClass.gold;
     final bist = _class == AssetClass.bistShare;
+    final fund = _class == AssetClass.fund;
 
     return Scaffold(
       appBar: AppBar(
@@ -280,7 +282,7 @@ class _TransactionFormState extends State<TransactionForm> {
             decoration: const InputDecoration(labelText: 'Asset class'),
             items: [
               for (final c in AssetClass.values)
-                DropdownMenuItem(value: c, child: Text(c.json)),
+                DropdownMenuItem(value: c, child: Text(assetClassLabel(c))),
             ],
             onChanged: (c) => setState(() {
               _class = c!;
@@ -302,6 +304,7 @@ class _TransactionFormState extends State<TransactionForm> {
             textCapitalization: TextCapitalization.characters,
             decoration: InputDecoration(
               labelText: 'Symbol',
+              hintText: fund ? 'Fund code, e.g. TTE' : null,
               errorText: built.symbolError,
             ),
             onChanged: (_) => setState(() {}),
@@ -314,7 +317,11 @@ class _TransactionFormState extends State<TransactionForm> {
           ),
           _intField('dayOrder', 'Day order', _order),
           if (_type == TxType.buy || _type == TxType.sell) ...[
-            _decimalField('quantity', isGold ? 'grams' : 'Quantity', _qty),
+            _decimalField(
+              'quantity',
+              isGold ? 'grams' : (fund ? 'Fund shares' : 'Quantity'),
+              _qty,
+            ),
             _decimalField('price', 'Unit price (TRY)', _price),
           ],
           if (_type == TxType.dividend) ...[
