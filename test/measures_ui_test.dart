@@ -35,6 +35,7 @@ void main() {
     Measure? measure,
     String? price = '15',
     bool cpi = true,
+    DateTime? fxDay,
   }) async {
     if (!fx) {
       SharedPreferences.setMockInitialValues({
@@ -67,7 +68,7 @@ void main() {
       }
       await c.prices.setManual(
         'FX:USD',
-        DateTime.utc(2026, 1, 5),
+        fxDay ?? DateTime.utc(2026, 1, 5),
         _d('30'),
         nowUtc: now,
       );
@@ -97,7 +98,28 @@ void main() {
     await boot(tester);
     await pick(tester, 'Real');
     expect(find.text('+25.00%'), findsWidgets);
-    expect(find.text('inflation known through 2026-02'), findsOneWidget);
+    expect(
+      find.text("in today's lira, inflation known through 2026-02 (estimate)"),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('comparison line carries the inflation note in TRY', (t) async {
+    await boot(t);
+    await lifetime(t);
+    expect(
+      find.text('inflation known through 2026-02 (estimate)'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('stale USD rate: holding detail names the missing rate', (
+    t,
+  ) async {
+    await boot(t, fxDay: DateTime.utc(2025, 12, 1));
+    await t.tap(find.text('AAA'));
+    await t.pumpAndSettle();
+    expect(find.text('Missing USD/TRY rate for 2026-01-05'), findsOneWidget);
   });
 
   testWidgets('comparison line', (tester) async {

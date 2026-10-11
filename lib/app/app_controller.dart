@@ -408,7 +408,21 @@ class AppController extends ChangeNotifier {
     _ => null,
   };
 
-  PeriodResult displayPeriodIn(Measure m, Period p) {
+  // Replays are costly; every change goes through notifyListeners, which clears these.
+  final _holdingsCache = <Measure, (ReplayResult, PriceLookup)?>{};
+  final _periodCache = <(Measure, Period), PeriodResult>{};
+
+  @override
+  void notifyListeners() {
+    _holdingsCache.clear();
+    _periodCache.clear();
+    super.notifyListeners();
+  }
+
+  PeriodResult displayPeriodIn(Measure m, Period p) =>
+      _periodCache[(m, p)] ??= _displayPeriodIn(m, p);
+
+  PeriodResult _displayPeriodIn(Measure m, Period p) {
     final r = ratesFor(m);
     return r == null
         ? displayPeriod(p)
@@ -422,7 +436,12 @@ class AppController extends ChangeNotifier {
           );
   }
 
-  (ReplayResult, PriceLookup)? holdingsIn(Measure m) {
+  (ReplayResult, PriceLookup)? holdingsIn(Measure m) =>
+      _holdingsCache.containsKey(m)
+      ? _holdingsCache[m]
+      : _holdingsCache[m] = _holdingsIn(m);
+
+  (ReplayResult, PriceLookup)? _holdingsIn(Measure m) {
     final r = ratesFor(m);
     if (r == null) return (displayReplay, prices);
     if (measureUnavailable(m) != null) return null;
@@ -452,6 +471,13 @@ class AppController extends ChangeNotifier {
   Future<void> setEvdsKey(String? v) async {
     await prefs.setEvdsKey(v);
     notifyListeners();
+    if (prefs.enabledSources.contains('evds') && prefs.evdsKey != null) {
+      try {
+        await refreshPrices(manual: true);
+      } on Object {
+        // Best effort; the status line shows the source's error.
+      }
+    }
   }
 
   Future<void> setManualCpi(String month, Decimal percent) =>

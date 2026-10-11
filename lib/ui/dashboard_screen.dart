@@ -140,7 +140,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           if (unavailable != null) Text(unavailable),
           if (m == Measure.real)
-            if (c.ratesFor(m)?.note case final note?) Text(note),
+            if (c.ratesFor(m)?.note case final note?)
+              Text("in today's lira, $note"),
           const SizedBox(height: 8),
           if (_period == Period.daily && closedDay)
             ExpansionTile(
@@ -262,7 +263,8 @@ class _Comparison extends StatelessWidget {
           : '$label ${signedPercent(r.returnPercent!)}';
     }
 
-    return Amount(
+    final note = c.ratesFor(Measure.real)?.note;
+    final line = Amount(
       [
         if (t.returnPercent != null)
           'TRY ${signedPercent(t.returnPercent!)}'
@@ -276,5 +278,11 @@ class _Comparison extends StatelessWidget {
         part('USD', Measure.usd),
       ].join(' · '),
     );
+    return note == null
+        ? line
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [line, Text(note)],
+          );
   }
 }

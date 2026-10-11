@@ -73,6 +73,11 @@ void main() {
     expect(r.gain, d('300'));
     expect(roundHalfEven(r.returnPercent!, 2), d('25'));
     expect(rates.note, 'inflation known through 2026-02');
+    final est = RealRates(
+      CpiSeries({'2026-02': CpiEntry(d('20'), 'tcmb')}),
+      today: today,
+    );
+    expect(est.note, 'inflation known through 2026-02 (estimate)');
     final pos = replay(
       convertTransactions([buy(on: day1, qty: '100', price: '10')], rates),
       through: today,

@@ -93,7 +93,7 @@ void main() {
     expect(sources.every((s) => !s.value), isTrue);
     expect(
       find.text(
-        'Sends: asset symbols. Contacts: api.btcturk.com. '
+        'Sends: asset symbols and dates. Contacts: api.btcturk.com. '
         'Your quantities and costs are never sent.',
       ),
       findsOneWidget,

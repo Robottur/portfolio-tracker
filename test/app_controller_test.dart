@@ -592,6 +592,7 @@ void main() {
         obs('FX:USD', '2026-10-01', '40', PriceKind.close),
         obs('XIST:AAA', '2026-10-09', '20', PriceKind.close),
       ]);
+      await c.setPrivacy(false); // notifies, so the cached null is dropped
       final (_, lookup) = c.holdingsIn(Measure.usd)!;
       expect(lookup.latest('XIST:AAA')!.price, Decimal.parse('0.5'));
       expect(lookup.closeOnOrBefore('XIST:AAA', c.today), isNull);
@@ -621,6 +622,76 @@ void main() {
       });
       await c.refreshPrices(manual: true);
       expect(hosts, ['www.tcmb.gov.tr']);
+    });
+
+    test('stale USD rate: holdingsIn is null, with the reason', () async {
+      final c = await withTx({'yahoo'}, (_) async => http.Response('', 500));
+      await c.prices.addFetched([
+        obs('FX:USD', '2026-09-01', '40', PriceKind.close),
+        obs('XIST:AAA', '2026-10-09', '20', PriceKind.close),
+      ]);
+      await c.setPrivacy(false);
+      expect(c.holdingsIn(Measure.usd), isNull);
+      expect(
+        c.displayPeriodIn(Measure.usd, Period.lifetime).unavailableReason,
+        'Missing USD/TRY rate for 2026-10-01',
+      );
+    });
+
+    test('holdingsIn and displayPeriodIn are cached until a change', () async {
+      final c = await withTx({'yahoo'}, (_) async => http.Response('', 500));
+      await c.prices.addFetched([
+        obs('FX:USD', '2026-10-01', '40', PriceKind.close),
+        obs('XIST:AAA', '2026-10-09', '20', PriceKind.close),
+      ]);
+      await c.setPrivacy(false);
+      final h = c.holdingsIn(Measure.usd);
+      final p = c.displayPeriodIn(Measure.usd, Period.lifetime);
+      expect(c.holdingsIn(Measure.usd), same(h));
+      expect(c.displayPeriodIn(Measure.usd, Period.lifetime), same(p));
+      for (final change in [
+        () => c.setMeasure(Measure.usd),
+        () => c.setPrivacy(true),
+        () => c.addTransaction(
+          Transaction.buy(
+            instrument: Instrument.create(AssetClass.bistShare, 'AAA'),
+            date: t0,
+            dayOrder: 11,
+            quantity: Decimal.one,
+            unitPrice: Decimal.one,
+            fees: Decimal.zero,
+          ),
+        ),
+      ]) {
+        final before = c.holdingsIn(Measure.usd);
+        final beforeP = c.displayPeriodIn(Measure.usd, Period.lifetime);
+        await change();
+        expect(c.holdingsIn(Measure.usd), isNot(same(before)));
+        expect(
+          c.displayPeriodIn(Measure.usd, Period.lifetime),
+          isNot(same(beforeP)),
+        );
+      }
+    });
+
+    test('saving the EVDS key refreshes when evds is enabled', () async {
+      final hosts = <String>[];
+      Future<http.Response> h(http.Request r) async {
+        hosts.add(r.url.host);
+        return http.Response('x', 500);
+      }
+
+      final off = await withTx({'btcturk'}, h);
+      hosts.clear();
+      await off.setEvdsKey('k');
+      expect(hosts, isEmpty);
+      final on = await withTx({'evds'}, h);
+      hosts.clear();
+      await on.setEvdsKey('k');
+      expect(hosts, ['evds3.tcmb.gov.tr']);
+      hosts.clear();
+      await on.setEvdsKey('  ');
+      expect(hosts, isEmpty);
     });
 
     test('measureUnavailable', () async {

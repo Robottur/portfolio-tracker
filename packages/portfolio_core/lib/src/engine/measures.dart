@@ -81,7 +81,7 @@ class RealRates implements Rates {
   String? get note {
     final latest = _cpi.latestMonth;
     return latest != null && monthKey(today).compareTo(latest) > 0
-        ? 'inflation known through $latest'
+        ? 'inflation known through $latest${_cpi.hasEstimates ? ' (estimate)' : ''}'
         : null;
   }
 }

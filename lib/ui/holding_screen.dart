@@ -428,7 +428,13 @@ class HoldingDetail extends StatelessWidget {
     if (data == null || p == null) {
       return [
         head,
-        Text(controller.measureUnavailable(m) ?? 'a rate is missing'),
+        Text(
+          controller.measureUnavailable(m) ??
+              controller
+                  .displayPeriodIn(m, Period.lifetime)
+                  .unavailableReason ??
+              'a rate is missing',
+        ),
       ];
     }
     final e = HoldingEntry(p, data.$2.latest(instrumentId));

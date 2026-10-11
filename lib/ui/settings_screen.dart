@@ -261,7 +261,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               contentPadding: EdgeInsets.zero,
               title: Text(s.label),
               subtitle: Text(
-                '${s is InflationSource ? 'Sends: nothing about your holdings. Contacts: ${s.domains.join(', ')}.' : 'Sends: asset symbols. Contacts: ${s.domains.join(', ')}. Your quantities and costs are never sent.'}'
+                '${s is InflationSource ? 'Sends: nothing about your holdings. Contacts: ${s.domains.join(', ')}.' : 'Sends: asset symbols and dates. Contacts: ${s.domains.join(', ')}. Your quantities and costs are never sent.'}'
                 '${_status(s.id).isEmpty ? '' : '\n${_status(s.id)}'}',
               ),
               value: _c.prefs.enabledSources.contains(s.id),
