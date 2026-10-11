@@ -127,4 +127,23 @@ void main() {
     final p = r.positions['XIST:AAA']!;
     expect(strs([p.quantity, p.cost]), ['1', '30']);
   });
+
+  test(
+    'split leaving a fraction beyond 8 decimals is an issue, not applied',
+    () {
+      final r = replay([
+        buy(on: d1, qty: '10', price: '3'),
+        split(on: d2, numerator: 1, denominator: 3),
+      ]);
+      expect(r.positions['XIST:AAA']!.quantity, Decimal.fromInt(10));
+      expect(r.issues, hasLength(1));
+      final i = r.issues.single;
+      expect(i.kind, IssueKind.unsupportedSplit);
+      expect(
+        i.message,
+        'Split leaves a fraction beyond 8 decimals; record the cash-in-lieu sale first',
+      );
+      expect(i.recordIds, ['XIST:AAA', '2026-01-02']);
+    },
+  );
 }

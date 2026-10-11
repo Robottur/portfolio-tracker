@@ -106,10 +106,23 @@ ReplayResult replay(Iterable<Transaction> txs, {DateTime? through}) {
         flows.add(Flow(t.effectiveDate, -net));
       case TxType.split:
         if (p != null) {
-          p.quantity = divide(
+          final q = divide(
             p.quantity * Decimal.fromInt(t.ratioNumerator!),
             Decimal.fromInt(t.ratioDenominator!),
           );
+          // A record quantity has at most 8 decimals, so the rest could never be sold.
+          if (q.scale > 8) {
+            issues.add(
+              LedgerIssue(
+                IssueKind.unsupportedSplit,
+                'Split leaves a fraction beyond 8 decimals; '
+                'record the cash-in-lieu sale first',
+                recordIds: ctx,
+              ),
+            );
+            continue;
+          }
+          p.quantity = q;
         }
     }
   }

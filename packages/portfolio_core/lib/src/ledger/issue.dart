@@ -8,6 +8,7 @@ enum IssueKind {
   oversell,
   dayOrderCollision,
   unsupportedVersion,
+  unsupportedSplit,
 }
 
 class LedgerIssue {
