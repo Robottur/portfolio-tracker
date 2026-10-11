@@ -43,6 +43,44 @@ DateTime? _firstDate(List<Transaction> txs) => txs.isEmpty
     ? null
     : txs.map((t) => t.effectiveDate).reduce((a, b) => a.isBefore(b) ? a : b);
 
+(DateTime, bool) _baseline(
+  Period period,
+  DateTime today,
+  DateTime first,
+  TradingCalendar calendar,
+) {
+  final lifetime = period == Period.lifetime;
+  final dayBeforeFirst = first.subtract(const Duration(days: 1));
+  var b = lifetime ? dayBeforeFirst : baselineFor(period, today, calendar);
+  var sinceInception = false;
+  if (b.isBefore(dayBeforeFirst)) {
+    b = dayBeforeFirst;
+    sinceInception = !lifetime;
+  }
+  return (b, sinceInception);
+}
+
+/// An unavailable result with the baseline computePeriod would choose.
+PeriodResult unavailablePeriod({
+  required String reason,
+  required Period period,
+  required DateTime today,
+  required List<Transaction> transactions,
+  required TradingCalendar calendar,
+}) {
+  final first = _firstDate(transactions);
+  final (b, since) = first == null
+      ? (today, false)
+      : _baseline(period, today, first, calendar);
+  return PeriodResult(
+    period: period,
+    baseline: b,
+    end: today,
+    unavailableReason: reason,
+    sinceInception: since,
+  );
+}
+
 PeriodResult computePeriod({
   required Period period,
   required DateTime today,
@@ -62,14 +100,7 @@ PeriodResult computePeriod({
       percentNote: _noCapital,
     );
   }
-  final lifetime = period == Period.lifetime;
-  final dayBeforeFirst = first.subtract(const Duration(days: 1));
-  var b = lifetime ? dayBeforeFirst : baselineFor(period, today, calendar);
-  var sinceInception = false;
-  if (b.isBefore(dayBeforeFirst)) {
-    b = dayBeforeFirst;
-    sinceInception = !lifetime;
-  }
+  final (b, sinceInception) = _baseline(period, today, first, calendar);
 
   PeriodResult unavailable(String reason) => PeriodResult(
     period: period,

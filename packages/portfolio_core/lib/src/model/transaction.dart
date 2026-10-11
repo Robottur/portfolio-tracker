@@ -186,6 +186,24 @@ class Transaction {
   final int? ratioNumerator, ratioDenominator;
   final String? note;
 
+  /// Money fields times [rate] at full precision; a split has none.
+  Transaction scaledBy(Decimal rate) {
+    if (type == TxType.split) return this;
+    Decimal? k(Decimal? v) => v == null ? null : v * rate;
+    return Transaction._(
+      type: type,
+      effectiveDate: effectiveDate,
+      dayOrder: dayOrder,
+      instrument: instrument,
+      quantity: quantity,
+      unitPrice: k(unitPrice),
+      fees: k(fees),
+      grossAmount: k(grossAmount),
+      withholding: k(withholding),
+      note: note,
+    );
+  }
+
   Decimal get netDividend =>
       grossAmount! - (withholding ?? Decimal.zero) - (fees ?? Decimal.zero);
 

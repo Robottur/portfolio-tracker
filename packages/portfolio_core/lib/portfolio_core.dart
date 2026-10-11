@@ -2,6 +2,7 @@
 library;
 
 export 'src/dates.dart';
+export 'src/engine/measures.dart';
 export 'src/engine/periods.dart';
 export 'src/engine/replay.dart';
 export 'src/engine/returns.dart';
