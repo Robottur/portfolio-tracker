@@ -5,6 +5,7 @@ import 'package:asset_portfolio/app/device_prefs.dart';
 import 'package:asset_portfolio/main.dart';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:portfolio_core/portfolio_core.dart';
@@ -32,6 +33,8 @@ void main() {
     double width = 700,
     bool fx = true,
     Measure? measure,
+    String? price = '15',
+    bool cpi = true,
   }) async {
     if (!fx) {
       SharedPreferences.setMockInitialValues({
@@ -59,7 +62,9 @@ void main() {
           fees: Decimal.zero,
         ),
       );
-      await c.prices.setManual('XIST:AAA', c.today, _d('15'), nowUtc: now);
+      if (price != null) {
+        await c.prices.setManual('XIST:AAA', c.today, _d(price), nowUtc: now);
+      }
       await c.prices.setManual(
         'FX:USD',
         DateTime.utc(2026, 1, 5),
@@ -67,7 +72,7 @@ void main() {
         nowUtc: now,
       );
       await c.prices.setManual('FX:USD', c.today, _d('40'), nowUtc: now);
-      await c.prices.setCpi({'2026-02': _d('20')}, 'tcmb');
+      if (cpi) await c.prices.setCpi({'2026-02': _d('20')}, 'tcmb');
       if (measure != null) await c.setMeasure(measure);
     });
     await tester.pumpWidget(AssetPortfolioApp(controller: c));
@@ -131,10 +136,106 @@ void main() {
     await boot(tester, measure: Measure.usd);
     await tester.runAsync(() => c.setPrivacy(true));
     await tester.pumpAndSettle();
-    expect(find.textContaining('37.50'), findsNothing);
-    expect(find.textContaining('real +'), findsNothing);
     await lifetime(tester);
-    expect(find.textContaining('20.00%'), findsNothing);
+    Future<void> none() async {
+      for (final t in [
+        '25.00%',
+        'Beat inflation',
+        '37.50',
+        '33.33',
+        '12.50%',
+      ]) {
+        expect(find.textContaining(t), findsNothing, reason: t);
+      }
+      expect(find.textContaining('real +'), findsNothing);
+      expect(find.textContaining('20.00%'), findsNothing);
+    }
+
+    await none();
+    await pick(tester, 'Real');
+    expect(find.textContaining('1,500.00'), findsNothing);
+    await none();
+    await pick(tester, 'Pie');
+    expect(find.textContaining('100.0%'), findsNothing);
+    expect(find.textContaining(' TRY'), findsNothing);
+    expect(find.textContaining(' USD'), findsNothing);
+    expect(find.textContaining('•'), findsWidgets);
+    await pick(tester, 'List');
+    await tester.tap(find.text('AAA'));
+    await tester.pumpAndSettle();
+    expect(find.text('In USD'), findsOneWidget);
+    expect(find.text('After inflation'), findsOneWidget);
+    await none();
+    expect(find.textContaining('1,200.00'), findsNothing);
+    expect(find.textContaining('300.00'), findsNothing);
+  });
+
+  testWidgets('behind inflation sentence', (tester) async {
+    await boot(tester, price: '10');
+    await tester.tap(find.text('AAA'));
+    await tester.pumpAndSettle();
+    expect(find.text('Behind inflation by 16.67%'), findsOneWidget);
+  });
+
+  testWidgets('holdings tab follows the measure', (tester) async {
+    await boot(tester, measure: Measure.usd);
+    await tester.tap(find.text('Holdings'));
+    await tester.pumpAndSettle();
+    expect(find.text('37.50 USD'), findsOneWidget);
+  });
+
+  testWidgets('holdings tab unavailable measure keeps TRY', (tester) async {
+    await boot(tester, fx: false, measure: Measure.usd);
+    await tester.tap(find.text('Holdings'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('USD unavailable: Enable a currency source for USD returns'),
+      findsOneWidget,
+    );
+    expect(find.text('1,500.00 TRY'), findsOneWidget);
+  });
+
+  testWidgets('comparison line without cpi', (tester) async {
+    await boot(tester, cpi: false);
+    await lifetime(tester);
+    expect(
+      find.textContaining('inflation: Add inflation data in Settings'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('comparison line with TRY unavailable', (tester) async {
+    await boot(tester, price: null);
+    await lifetime(tester);
+    expect(find.textContaining('TRY: '), findsWidgets);
+  });
+
+  testWidgets('sort control: one keyboard stop, one semantics node', (
+    tester,
+  ) async {
+    final sem = tester.ensureSemantics();
+    await boot(tester);
+    expect(find.bySemanticsLabel(RegExp('Sort: Name')), findsOneWidget);
+    var focused = false;
+    for (var i = 0; i < 40 && !focused; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      final ctx = FocusManager.instance.primaryFocus?.context;
+      focused =
+          ctx != null &&
+          find
+              .descendant(
+                of: find.byElementPredicate((e) => e == ctx),
+                matching: find.textContaining('Sort:'),
+              )
+              .evaluate()
+              .isNotEmpty;
+    }
+    expect(focused, isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.text('Value'), findsOneWidget);
+    sem.dispose();
   });
 
   testWidgets('sort button is labelled', (tester) async {

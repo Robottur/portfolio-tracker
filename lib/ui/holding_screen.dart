@@ -47,6 +47,19 @@ Map<String, Decimal> realGains(AppController c) {
         };
 }
 
+const measureNames = {
+  Measure.tryNominal: 'TRY',
+  Measure.usd: 'USD',
+  Measure.real: 'Real',
+};
+
+/// `<USD|Real> unavailable: <reason>` when [wanted] cannot be shown, else null.
+String? unavailableLine(AppController c, Measure wanted, Period p) =>
+    c.holdingsIn(wanted) != null
+    ? null
+    : '${measureNames[wanted]} unavailable: '
+          '${c.measureUnavailable(wanted) ?? c.displayPeriodIn(wanted, p).unavailableReason ?? 'a rate is missing'}';
+
 String _signed1(Decimal v) {
   final r = roundHalfEven(v, 1);
   return r >= Decimal.zero
@@ -98,12 +111,22 @@ class SortButton extends StatelessWidget {
       for (final e in _sortLabels.entries)
         PopupMenuItem(value: e.key, child: Text(e.value)),
     ],
-    // The button only looks like one; the popup button takes the tap.
-    child: AbsorbPointer(
-      child: TextButton.icon(
-        onPressed: () {},
-        icon: const Icon(Icons.sort),
-        label: Text('Sort: ${_sortLabels[controller.prefs.holdingSort]} ▾'),
+    // The popup button's own InkWell is the single focus stop.
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: DefaultTextStyle.merge(
+        style: TextStyle(color: Theme.of(context).colorScheme.primary),
+        child: IconTheme.merge(
+          data: IconThemeData(color: Theme.of(context).colorScheme.primary),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.sort, size: 18),
+              const SizedBox(width: 8),
+              Text('Sort: ${_sortLabels[controller.prefs.holdingSort]} ▾'),
+            ],
+          ),
+        ),
       ),
     ),
   );
@@ -196,12 +219,19 @@ class _HoldingsViewState extends State<HoldingsView> {
     builder: (context, _) {
       final c = widget.controller;
       final wide = MediaQuery.sizeOf(context).width >= 840;
+      final wanted = c.prefs.measure;
+      final data = c.holdingsIn(wanted);
+      final m = data == null ? Measure.tryNominal : wanted;
       final entries = c.displayIncomplete
           ? <HoldingEntry>[]
           : sortEntries(
-              holdingEntries(c, closed: _closed),
+              entriesFrom(
+                data ?? c.holdingsIn(Measure.tryNominal)!,
+                closed: _closed,
+              ),
               c.prefs.holdingSort,
             );
+      final notice = unavailableLine(c, wanted, Period.lifetime);
       final real = realGains(c);
       final list = ListView(
         children: [
@@ -210,6 +240,11 @@ class _HoldingsViewState extends State<HoldingsView> {
             alignment: Alignment.centerLeft,
             child: SortButton(controller: c),
           ),
+          if (notice != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(notice),
+            ),
           SwitchListTile(
             title: const Text('Show closed positions'),
             value: _closed,
@@ -227,6 +262,7 @@ class _HoldingsViewState extends State<HoldingsView> {
           for (final e in entries)
             HoldingTile(
               entry: e,
+              measure: m,
               real: real[e.position.instrument.id],
               selected: wide && e.position.instrument.id == _selected,
               onTap: () {
@@ -430,7 +466,7 @@ class HoldingDetail extends StatelessWidget {
         Amount(
           roundHalfEven(pct, 2) >= Decimal.zero
               ? 'Beat inflation by ${formatPercent(pct)} since purchase'
-              : 'Behind inflation by ${formatPercent(-pct)} since purchase',
+              : 'Behind inflation by ${formatPercent(-pct)}',
         ),
     ];
   }

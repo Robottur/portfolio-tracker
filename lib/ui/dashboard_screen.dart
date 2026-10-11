@@ -18,12 +18,6 @@ const _labels = {
   Period.lifetime: 'Lifetime',
 };
 
-const _names = {
-  Measure.tryNominal: 'TRY',
-  Measure.usd: 'USD',
-  Measure.real: 'Real',
-};
-
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
@@ -63,10 +57,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final data = c.holdingsIn(wanted);
       // An unavailable measure leaves every figure in TRY.
       final m = data == null ? Measure.tryNominal : wanted;
-      final unavailable = data == null
-          ? '${_names[wanted]} unavailable: '
-                '${c.measureUnavailable(wanted) ?? c.displayPeriodIn(wanted, _period).unavailableReason ?? 'a rate is missing'}'
-          : null;
+      final unavailable = unavailableLine(c, wanted, _period);
       final shown = data ?? c.holdingsIn(Measure.tryNominal)!;
       final v = valueHoldings(shown.$1.positions, shown.$2.latest);
       final r = c.displayPeriodIn(m, _period);
@@ -136,7 +127,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 showSelectedIcon: false,
                 segments: [
                   for (final k in Measure.values)
-                    ButtonSegment(value: k, label: Text(_names[k]!)),
+                    ButtonSegment(value: k, label: Text(measureNames[k]!)),
                 ],
                 selected: {wanted},
                 onSelectionChanged: (s) => c.setMeasure(s.first).catchError((
@@ -259,11 +250,9 @@ class _Comparison extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = c.displayPeriod(period);
-    if (t.returnPercent == null) return const SizedBox.shrink();
-    final inflation = c.prices.cpi.change(
-      monthKey(t.baseline),
-      monthKey(t.end),
-    );
+    final cpi = c.prices.cpi;
+    final from = monthKey(t.baseline), to = monthKey(t.end);
+    final inflation = cpi.change(from, to);
     String part(String label, Measure m) {
       final r = c.displayPeriodIn(m, period);
       final reason = c.measureUnavailable(m) ?? r.unavailableReason;
@@ -275,9 +264,14 @@ class _Comparison extends StatelessWidget {
 
     return Amount(
       [
-        'TRY ${signedPercent(t.returnPercent!)}',
+        if (t.returnPercent != null)
+          'TRY ${signedPercent(t.returnPercent!)}'
+        else
+          'TRY: ${t.unavailableReason ?? 'n/a'}',
         if (inflation != null)
-          'inflation ${signedPercent(inflation * Decimal.fromInt(100))}',
+          'inflation ${signedPercent(inflation * Decimal.fromInt(100))}'
+        else
+          'inflation: ${cpi.latestMonth == null ? 'Add inflation data in Settings' : 'Inflation missing for ${cpi.firstMissing(from, to) ?? from}'}',
         part('real', Measure.real),
         part('USD', Measure.usd),
       ].join(' · '),
