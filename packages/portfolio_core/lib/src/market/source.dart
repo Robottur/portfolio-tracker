@@ -52,18 +52,19 @@ void checkResponse(http.Response r, String sourceId) {
   }
 }
 
-/// GET [url] and decode JSON; every failure is a [SourceException] except
-/// consent denial, which the caller must see as itself.
-Future<Object?> getJson(
+/// GET [url] and return the body text; every failure is a [SourceException]
+/// except consent denial, which the caller must see as itself.
+Future<String> getText(
   http.Client c,
   Uri url,
   String sourceId, {
+  Map<String, String> headers = const {},
   Duration timeout = requestTimeout,
 }) async {
   final http.Response r;
   try {
     r = await c
-        .get(url, headers: {'User-Agent': 'Mozilla/5.0'})
+        .get(url, headers: {'User-Agent': 'Mozilla/5.0', ...headers})
         .timeout(timeout);
   } on ConsentDeniedException {
     rethrow;
@@ -71,8 +72,26 @@ Future<Object?> getJson(
     throw SourceException(sourceId, 'Request failed: ${e.runtimeType}');
   }
   checkResponse(r, sourceId);
+  return utf8.decode(r.bodyBytes, allowMalformed: true);
+}
+
+/// [getText] decoded as JSON.
+Future<Object?> getJson(
+  http.Client c,
+  Uri url,
+  String sourceId, {
+  Map<String, String> headers = const {},
+  Duration timeout = requestTimeout,
+}) async {
+  final body = await getText(
+    c,
+    url,
+    sourceId,
+    headers: headers,
+    timeout: timeout,
+  );
   try {
-    return jsonDecode(utf8.decode(r.bodyBytes));
+    return jsonDecode(body);
   } on FormatException {
     throw SourceException(sourceId, 'Response is not JSON');
   }

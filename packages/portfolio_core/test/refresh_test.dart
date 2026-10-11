@@ -9,6 +9,35 @@ import 'package:test/test.dart';
 
 import 'helpers.dart';
 
+class FakeInflation implements InflationSource {
+  FakeInflation(this.id, this.months, {this.fail = false});
+  @override
+  final String id;
+  final Map<String, Decimal> months;
+  bool fail;
+  int calls = 0;
+  @override
+  String get label => id;
+  @override
+  List<String> get domains => const [];
+  @override
+  Set<AssetClass> get assetClasses => const {};
+  @override
+  Future<List<PriceObservation>> latest(List<Instrument> i) async => [];
+  @override
+  Future<List<PriceObservation>> closes(
+    Instrument i,
+    DateTime a,
+    DateTime b,
+  ) async => [];
+  @override
+  Future<Map<String, Decimal>> monthly(DateTime from) async {
+    calls++;
+    if (fail) throw SourceException(id, 'boom');
+    return months;
+  }
+}
+
 class FakeSource implements PriceSource {
   FakeSource(this.id, this.assetClasses, {this.domains = const []});
   @override
@@ -645,5 +674,87 @@ void main() {
       'closes:FX:USD:2025-12-26:2026-01-05',
       'closes:FX:USD:2026-02-20:2026-03-02',
     ]);
+  });
+
+  group('refreshInflation', () {
+    late FakeInflation evds, tcmb;
+    late RefreshCoordinator irc;
+    setUp(() {
+      evds = FakeInflation('evds', {'2026-08': Decimal.parse('1.9')});
+      tcmb = FakeInflation('tcmbcpi', {'2026-08': Decimal.parse('1.84')});
+      irc = RefreshCoordinator(
+        sources: [evds, tcmb],
+        enabledSourceIds: () => enabled,
+        store: store,
+        nowUtc: () => now,
+      );
+    });
+
+    test('evds first, tcmb when evds fails', () async {
+      enabled = {'evds', 'tcmbcpi'};
+      evds.fail = true;
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), 'tcmbcpi');
+      expect(store.cpi.months['2026-08']!.source, 'tcmb');
+      expect(irc.status['evds']!.lastError, 'boom');
+      expect(irc.status['evds']!.retryNotBefore, isNotNull);
+    });
+
+    test('evds wins when it works', () async {
+      enabled = {'evds', 'tcmbcpi'};
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), 'evds');
+      expect(store.cpi.months['2026-08']!.source, 'evds');
+      expect(tcmb.calls, 0);
+    });
+
+    test('once per day, manual bypasses', () async {
+      enabled = {'tcmbcpi'};
+      await irc.refreshInflation(from: date(2026, 1, 1));
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), isNull);
+      expect(tcmb.calls, 1);
+      now = now.add(const Duration(hours: 1));
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), isNull);
+      expect(
+        await irc.refreshInflation(from: date(2026, 1, 1), manual: true),
+        'tcmbcpi',
+      );
+      expect(tcmb.calls, 2);
+      now = now.add(const Duration(days: 1));
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), 'tcmbcpi');
+    });
+
+    test('nothing enabled: no call, day not used', () async {
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), isNull);
+      enabled = {'tcmbcpi'};
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), 'tcmbcpi');
+    });
+
+    test('changed page keeps stored months', () async {
+      await store.setCpi({'2026-07': Decimal.parse('1.78')}, 'tcmb');
+      final page = File('test/fixtures/tcmb_cpi_page.html')
+          .readAsStringSync()
+          .replaceFirst('Ay-Yıl', 'Ay-Yil');
+      final r = RefreshCoordinator(
+        sources: [
+          TcmbCpiSource(
+            MockClient(
+              (_) async => http.Response.bytes(utf8.encode(page), 200),
+            ),
+          ),
+        ],
+        enabledSourceIds: () => {'tcmbcpi'},
+        store: store,
+        nowUtc: () => now,
+      );
+      expect(await r.refreshInflation(from: date(2026, 1, 1)), isNull);
+      expect(r.status['tcmbcpi']!.lastError, contains('page changed'));
+      expect(store.cpi.months.keys, ['2026-07']);
+    });
+
+    test('percent at or below -100 is a source error', () async {
+      enabled = {'tcmbcpi'};
+      tcmb.months['2026-08'] = Decimal.parse('-100');
+      expect(await irc.refreshInflation(from: date(2026, 1, 1)), isNull);
+      expect(irc.status['tcmbcpi']!.lastError, 'Unusable inflation value');
+    });
   });
 }

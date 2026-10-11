@@ -1,8 +1,10 @@
+import '../dates.dart';
 import '../model/instrument.dart';
 import 'consent_client.dart';
 import 'price.dart';
 import 'price_store.dart';
 import 'source.dart';
+import 'sources/inflation.dart';
 
 class SourceStatus {
   DateTime? lastSuccess;
@@ -44,6 +46,7 @@ class RefreshCoordinator {
   // Closes windows fetched in this coordinator's lifetime, per instrument.
   final Map<String, List<(DateTime, DateTime)>> _windows = {};
   DateTime? _lastLatestStart;
+  DateTime? _lastInflationDay;
 
   Map<String, SourceStatus> get status => Map.unmodifiable(_status);
 
@@ -99,6 +102,72 @@ class RefreshCoordinator {
     }
   }
 
+  /// Runs [work] and does the status and back-off bookkeeping shared by every
+  /// source call. False when it failed or consent was refused.
+  Future<bool> _attempt(
+    PriceSource s,
+    Set<String> denied,
+    List<String> errors,
+    Future<void> Function() work,
+  ) async {
+    final st = _status.putIfAbsent(s.id, SourceStatus.new);
+    try {
+      await work();
+      st
+        ..lastSuccess = nowUtc()
+        ..lastError = null
+        ..retryNotBefore = null;
+      _failures.remove(s.id);
+      return true;
+    } on ConsentDeniedException {
+      denied.add(s.id);
+      st.lastError = 'Source is disabled';
+    } on Object catch (e) {
+      final msg = e is SourceException ? e.message : e.runtimeType.toString();
+      final n = (_failures[s.id] ?? 0) + 1;
+      _failures[s.id] = n;
+      final backoff = Duration(
+        minutes: n > 6 ? _maxBackoff : (1 << (n - 1)).clamp(1, _maxBackoff),
+      );
+      st
+        ..lastError = msg
+        ..retryNotBefore = nowUtc().add(
+          (e is SourceException ? e.retryAfter : null) ?? backoff,
+        );
+      errors.add('${s.id}: $msg');
+    }
+    return false;
+  }
+
+  /// Fetches monthly CPI: EVDS first, then the TCMB page. At most once per
+  /// Istanbul day unless [manual]. Returns the id that succeeded, else null.
+  Future<String?> refreshInflation({
+    required DateTime from,
+    bool manual = false,
+  }) async {
+    final today = istanbulToday(nowUtc());
+    if (!manual && _lastInflationDay == today) return null;
+    final on = enabledSourceIds();
+    final denied = <String>{};
+    for (final id in const ['evds', 'tcmbcpi']) {
+      final s = sources.where((s) => s.id == id).firstOrNull;
+      if (s is! InflationSource || !on.contains(id)) continue;
+      final retry = _status[id]?.retryNotBefore;
+      if (retry != null && nowUtc().isBefore(retry)) continue;
+      _lastInflationDay = today; // only a real attempt uses up the day
+      final ok = await _attempt(s, denied, [], () async {
+        final months = await s.monthly(from);
+        try {
+          await store.setCpi(months, id == 'evds' ? 'evds' : 'tcmb');
+        } on ArgumentError {
+          throw SourceException(id, 'Unusable inflation value');
+        }
+      });
+      if (ok) return id;
+    }
+    return null;
+  }
+
   Future<RefreshReport> refresh({
     required List<Instrument> current,
     required Map<DateTime, List<Instrument>> history,
@@ -131,38 +200,12 @@ class RefreshCoordinator {
       PriceSource s,
       Future<List<PriceObservation>> Function() fetch, [
       Set<String>? got,
-    ]) async {
-      final st = _status.putIfAbsent(s.id, SourceStatus.new);
-      try {
-        final obs = await fetch();
-        got?.addAll(obs.map((o) => o.instrumentId));
-        await store.addFetched(obs);
-        report.fetched += obs.length;
-        st
-          ..lastSuccess = nowUtc()
-          ..lastError = null
-          ..retryNotBefore = null;
-        _failures.remove(s.id);
-        return true;
-      } on ConsentDeniedException {
-        denied.add(s.id);
-        st.lastError = 'Source is disabled';
-      } on Object catch (e) {
-        final msg = e is SourceException ? e.message : e.runtimeType.toString();
-        final n = (_failures[s.id] ?? 0) + 1;
-        _failures[s.id] = n;
-        final backoff = Duration(
-          minutes: n > 6 ? _maxBackoff : (1 << (n - 1)).clamp(1, _maxBackoff),
-        );
-        st
-          ..lastError = msg
-          ..retryNotBefore = nowUtc().add(
-            (e is SourceException ? e.retryAfter : null) ?? backoff,
-          );
-        report.errors.add('${s.id}: $msg');
-      }
-      return false;
-    }
+    ]) => _attempt(s, denied, report.errors, () async {
+      final obs = await fetch();
+      got?.addAll(obs.map((o) => o.instrumentId));
+      await store.addFetched(obs);
+      report.fetched += obs.length;
+    });
 
     final groups = <String, List<Instrument>>{};
     for (final i in current) {

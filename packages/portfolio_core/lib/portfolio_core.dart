@@ -19,6 +19,7 @@ export 'src/market/source.dart';
 export 'src/market/sources/binance.dart';
 export 'src/market/sources/btcturk.dart';
 export 'src/market/sources/gold.dart';
+export 'src/market/sources/inflation.dart';
 export 'src/market/sources/isyatirim.dart';
 export 'src/market/sources/tcmb.dart';
 export 'src/market/sources/tefas.dart';
