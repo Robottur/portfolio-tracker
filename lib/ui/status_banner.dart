@@ -4,14 +4,20 @@ import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
 
+String _unit(Measure m) => m == Measure.usd ? 'USD' : 'TRY';
+
+String formatMoney(Decimal v, Measure m) => '${formatTry(v)} ${_unit(m)}';
+
 /// Sign plus words, so a gain or loss never depends on colour.
-String signedTry(Decimal v) {
-  final r = roundHalfEven(v, 2);
-  if (r == Decimal.zero) return '${formatTry(r)} TRY';
+String signedMoney(Decimal v, Measure m) {
+  final r = roundHalfEven(v, 2), u = _unit(m);
+  if (r == Decimal.zero) return '${formatTry(r)} $u';
   return r > Decimal.zero
-      ? '+${formatTry(r)} TRY gain'
-      : '−${formatTry(-r)} TRY loss';
+      ? '+${formatTry(r)} $u gain'
+      : '−${formatTry(-r)} $u loss';
 }
+
+String signedTry(Decimal v) => signedMoney(v, Measure.tryNominal);
 
 String signedPercent(Decimal v) {
   final r = roundHalfEven(v, 2);

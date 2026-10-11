@@ -7,6 +7,7 @@ import 'package:portfolio_core/portfolio_core.dart';
 import 'asset_labels.dart';
 import 'holding_screen.dart';
 import 'privacy.dart';
+import 'status_banner.dart';
 
 // Not green or red, so a slice never reads as a gain or loss.
 const _colors = {
@@ -22,8 +23,13 @@ String _share(Decimal part, Decimal total) =>
 
 /// Each asset class's share of priced value; unpriced holdings are listed apart.
 class AllocationPie extends StatefulWidget {
-  const AllocationPie({super.key, required this.entries});
+  const AllocationPie({
+    super.key,
+    required this.entries,
+    this.measure = Measure.tryNominal,
+  });
   final List<HoldingEntry> entries;
+  final Measure measure;
 
   @override
   State<AllocationPie> createState() => _AllocationPieState();
@@ -96,7 +102,7 @@ class _AllocationPieState extends State<AllocationPie> {
             leading: Icon(Icons.circle, color: _colors[e.key]),
             title: Text(assetClassHeading(e.key)),
             trailing: Amount(
-              '${_share(e.value, total)} · ${formatTry(e.value)} TRY',
+              '${_share(e.value, total)} · ${formatMoney(e.value, widget.measure)}',
             ),
             onTap: () => _toggle(e.key),
           ),

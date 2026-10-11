@@ -18,6 +18,12 @@ const _labels = {
   Period.lifetime: 'Lifetime',
 };
 
+const _names = {
+  Measure.tryNominal: 'TRY',
+  Measure.usd: 'USD',
+  Measure.real: 'Real',
+};
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     super.key,
@@ -53,9 +59,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     listenable: widget.controller,
     builder: (context, _) {
       final c = widget.controller;
-      final prices = c.prices;
-      final v = valueHoldings(c.displayReplay.positions, prices.latest);
-      final r = c.displayPeriod(_period);
+      final wanted = c.prefs.measure;
+      final data = c.holdingsIn(wanted);
+      // An unavailable measure leaves every figure in TRY.
+      final m = data == null ? Measure.tryNominal : wanted;
+      final unavailable = data == null
+          ? '${_names[wanted]} unavailable: '
+                '${c.measureUnavailable(wanted) ?? c.displayPeriodIn(wanted, _period).unavailableReason ?? 'a rate is missing'}'
+          : null;
+      final shown = data ?? c.holdingsIn(Measure.tryNominal)!;
+      final v = valueHoldings(shown.$1.positions, shown.$2.latest);
+      final r = c.displayPeriodIn(m, _period);
       final enabled = c.prefs.enabledSources.isNotEmpty;
       // shortcut: weekends only; holidays need an exchange calendar
       final closedDay =
@@ -63,7 +77,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           c.today.weekday == DateTime.sunday;
       final entries = c.displayIncomplete
           ? <HoldingEntry>[]
-          : holdingEntries(c);
+          : entriesFrom(shown);
+      final real = realGains(c);
       // Groups keep the name order; holdings are sorted within each group.
       final byClass = <AssetClass, List<HoldingEntry>>{};
       for (final e in entries) {
@@ -97,22 +112,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
             )
           else if (v.total != null) ...[
             const Text('Portfolio value'),
-            Amount('${formatTry(v.total!)} TRY', style: big),
+            Amount(formatMoney(v.total!, m), style: big),
           ] else ...[
             const Text('Known priced holdings'),
-            Amount('${formatTry(v.knownValue)} TRY', style: big),
+            Amount(formatMoney(v.knownValue, m), style: big),
             Text('No price for: ${v.missing.join(', ')}'),
           ],
           const SizedBox(height: 12),
-          SegmentedButton<Period>(
-            showSelectedIcon: false,
-            segments: [
-              for (final p in Period.values)
-                ButtonSegment(value: p, label: Text(_labels[p]!)),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              SegmentedButton<Period>(
+                showSelectedIcon: false,
+                segments: [
+                  for (final p in Period.values)
+                    ButtonSegment(value: p, label: Text(_labels[p]!)),
+                ],
+                selected: {_period},
+                onSelectionChanged: (s) => setState(() => _period = s.first),
+              ),
+              SegmentedButton<Measure>(
+                showSelectedIcon: false,
+                segments: [
+                  for (final k in Measure.values)
+                    ButtonSegment(value: k, label: Text(_names[k]!)),
+                ],
+                selected: {wanted},
+                onSelectionChanged: (s) => c.setMeasure(s.first).catchError((
+                  _,
+                ) {
+                  // A measure is a convenience; the view keeps its last choice.
+                }),
+              ),
             ],
-            selected: {_period},
-            onSelectionChanged: (s) => setState(() => _period = s.first),
           ),
+          if (unavailable != null) Text(unavailable),
+          if (m == Measure.real)
+            if (c.ratesFor(m)?.note case final note?) Text(note),
           const SizedBox(height: 8),
           if (_period == Period.daily && closedDay)
             ExpansionTile(
@@ -132,7 +169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           else ...[
             if (r.gain != null)
               Amount(
-                signedTry(r.gain!),
+                signedMoney(r.gain!, m),
                 style: gainStyle(context, r.gain!, big),
               ),
             const Text('Return % — Modified Dietz estimate'),
@@ -144,13 +181,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             else if (r.percentNote != null)
               Text(r.percentNote!),
           ],
+          if (!c.displayIncomplete) _Comparison(c, _period),
           if (r.sinceInception)
             const Text('Since inception; shorter than selected period.'),
           const Divider(),
           if (entries.isEmpty && !c.displayIncomplete)
             const Text('No holdings')
           else if (entries.isNotEmpty)
-            Row(
+            Wrap(
+              spacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 SegmentedButton<bool>(
                   showSelectedIcon: false,
@@ -161,17 +201,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   selected: {_pie},
                   onSelectionChanged: (s) => setState(() => _pie = s.first),
                 ),
-                const Spacer(),
                 if (!_pie) SortButton(controller: c),
               ],
             ),
-          if (_pie && entries.isNotEmpty) AllocationPie(entries: entries),
+          if (_pie && entries.isNotEmpty)
+            AllocationPie(entries: entries, measure: m),
           if (!_pie)
             for (final cls in byClass.entries) ...[
-              _ClassHeading(cls.key, cls.value),
+              _ClassHeading(cls.key, cls.value, m),
               for (final e in cls.value)
                 HoldingTile(
                   entry: e,
+                  measure: m,
+                  real: real[e.position.instrument.id],
                   onTap: () =>
                       openHolding(context, c, e.position.instrument.id),
                 ),
@@ -184,9 +226,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
 /// Class name with the total of its priced holdings.
 class _ClassHeading extends StatelessWidget {
-  const _ClassHeading(this.cls, this.entries);
+  const _ClassHeading(this.cls, this.entries, this.measure);
   final AssetClass cls;
   final List<HoldingEntry> entries;
+  final Measure measure;
 
   @override
   Widget build(BuildContext context) {
@@ -200,9 +243,44 @@ class _ClassHeading extends StatelessWidget {
       children: [
         Text(assetClassHeading(cls), style: style),
         if (priced.isNotEmpty)
-          Amount('· ${formatTry(total)} TRY', style: style),
+          Amount('· ${formatMoney(total, measure)}', style: style),
         if (unpriced > 0) Text('+ $unpriced unpriced'),
       ],
+    );
+  }
+}
+
+/// The period's return in TRY next to inflation, real and USD.
+class _Comparison extends StatelessWidget {
+  const _Comparison(this.c, this.period);
+  final AppController c;
+  final Period period;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = c.displayPeriod(period);
+    if (t.returnPercent == null) return const SizedBox.shrink();
+    final inflation = c.prices.cpi.change(
+      monthKey(t.baseline),
+      monthKey(t.end),
+    );
+    String part(String label, Measure m) {
+      final r = c.displayPeriodIn(m, period);
+      final reason = c.measureUnavailable(m) ?? r.unavailableReason;
+      if (reason != null) return '$label: $reason';
+      return r.returnPercent == null
+          ? '$label: n/a'
+          : '$label ${signedPercent(r.returnPercent!)}';
+    }
+
+    return Amount(
+      [
+        'TRY ${signedPercent(t.returnPercent!)}',
+        if (inflation != null)
+          'inflation ${signedPercent(inflation * Decimal.fromInt(100))}',
+        part('real', Measure.real),
+        part('USD', Measure.usd),
+      ].join(' · '),
     );
   }
 }

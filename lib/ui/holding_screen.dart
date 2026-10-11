@@ -23,11 +23,36 @@ class HoldingEntry {
   bool get closed => position.quantity == Decimal.zero;
 }
 
-List<HoldingEntry> holdingEntries(AppController c, {bool closed = false}) => [
-  for (final p in c.displayReplay.positions.values)
+List<HoldingEntry> entriesFrom(
+  (ReplayResult, PriceLookup) data, {
+  bool closed = false,
+}) => [
+  for (final p in data.$1.positions.values)
     if (closed || p.quantity > Decimal.zero)
-      HoldingEntry(p, c.prices.latest(p.instrument.id)),
+      HoldingEntry(p, data.$2.latest(p.instrument.id)),
 ]..sort((a, b) => a.position.instrument.id.compareTo(b.position.instrument.id));
+
+List<HoldingEntry> holdingEntries(AppController c, {bool closed = false}) =>
+    entriesFrom((c.displayReplay, c.prices), closed: closed);
+
+/// Unrealized % per open holding in real terms; empty when REAL is unavailable.
+Map<String, Decimal> realGains(AppController c) {
+  final h = c.holdingsIn(Measure.real);
+  return h == null
+      ? {}
+      : {
+          for (final e in entriesFrom(h))
+            if (e.unrealizedPercent != null)
+              e.position.instrument.id: e.unrealizedPercent!,
+        };
+}
+
+String _signed1(Decimal v) {
+  final r = roundHalfEven(v, 1);
+  return r >= Decimal.zero
+      ? '+${r.toStringAsFixed(1)}%'
+      : '−${(-r).toStringAsFixed(1)}%';
+}
 
 /// Largest first for numeric orders; entries without the number go last.
 List<HoldingEntry> sortEntries(List<HoldingEntry> entries, HoldingSort by) {
@@ -65,7 +90,6 @@ class SortButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) => PopupMenuButton<HoldingSort>(
     tooltip: 'Sort',
-    icon: const Icon(Icons.sort),
     initialValue: controller.prefs.holdingSort,
     onSelected: (s) => controller.setHoldingSort(s).catchError((_) {
       // A sort order is a convenience; the list keeps its last order.
@@ -74,6 +98,14 @@ class SortButton extends StatelessWidget {
       for (final e in _sortLabels.entries)
         PopupMenuItem(value: e.key, child: Text(e.value)),
     ],
+    // The button only looks like one; the popup button takes the tap.
+    child: AbsorbPointer(
+      child: TextButton.icon(
+        onPressed: () {},
+        icon: const Icon(Icons.sort),
+        label: Text('Sort: ${_sortLabels[controller.prefs.holdingSort]} ▾'),
+      ),
+    ),
   );
 }
 
@@ -83,9 +115,15 @@ class HoldingTile extends StatelessWidget {
     required this.entry,
     required this.onTap,
     this.selected = false,
+    this.measure = Measure.tryNominal,
+    this.real,
   });
 
   final HoldingEntry entry;
+  final Measure measure;
+
+  /// Real unrealized % for the beat-inflation marker.
+  final Decimal? real;
   final VoidCallback onTap;
   final bool selected;
 
@@ -103,6 +141,8 @@ class HoldingTile extends StatelessWidget {
         children: [
           Amount(formatQuantity(entry.position.quantity)),
           if (tag != null) Text(tag),
+          if (real != null && !entry.closed)
+            Amount('real ${_signed1(real!)}', style: gainStyle(context, real!)),
         ],
       ),
       trailing: Column(
@@ -112,10 +152,10 @@ class HoldingTile extends StatelessWidget {
           if (entry.value == null)
             const Text('Price missing')
           else
-            Amount('${formatTry(entry.value!)} TRY'),
+            Amount(formatMoney(entry.value!, measure)),
           if (entry.unrealized != null && !entry.closed) ...[
             Amount(
-              signedTry(entry.unrealized!),
+              signedMoney(entry.unrealized!, measure),
               style: gainStyle(context, entry.unrealized!),
             ),
             // Own line: beside the TRY gain it overflows phone widths.
@@ -162,14 +202,18 @@ class _HoldingsViewState extends State<HoldingsView> {
               holdingEntries(c, closed: _closed),
               c.prefs.holdingSort,
             );
+      final real = realGains(c);
       final list = ListView(
         children: [
           StatusBanner(controller: c, onOpenIssues: widget.onOpenIssues),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SortButton(controller: c),
+          ),
           SwitchListTile(
             title: const Text('Show closed positions'),
             value: _closed,
             onChanged: (v) => setState(() => _closed = v),
-            secondary: SortButton(controller: c),
           ),
           if (c.displayIncomplete)
             ListTile(
@@ -183,6 +227,7 @@ class _HoldingsViewState extends State<HoldingsView> {
           for (final e in entries)
             HoldingTile(
               entry: e,
+              real: real[e.position.instrument.id],
               selected: wide && e.position.instrument.id == _selected,
               onTap: () {
                 final id = e.position.instrument.id;
@@ -321,6 +366,8 @@ class HoldingDetail extends StatelessWidget {
             ),
           ),
           _row('Net dividends', Amount(signedTry(p.dividends))),
+          ..._block(context, 'In USD', Measure.usd),
+          ..._block(context, 'After inflation', Measure.real),
           const Divider(),
           Text('History', style: Theme.of(context).textTheme.titleMedium),
           for (final t in history)
@@ -333,6 +380,60 @@ class HoldingDetail extends StatelessWidget {
       );
     },
   );
+
+  /// Cost, value and gains of this holding in a measure; the reason if it can't be shown.
+  List<Widget> _block(BuildContext context, String title, Measure m) {
+    final head = Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+    );
+    final data = controller.holdingsIn(m);
+    final p = data?.$1.positions[instrumentId];
+    if (data == null || p == null) {
+      return [
+        head,
+        Text(controller.measureUnavailable(m) ?? 'a rate is missing'),
+      ];
+    }
+    final e = HoldingEntry(p, data.$2.latest(instrumentId));
+    final pct = e.unrealizedPercent;
+    return [
+      head,
+      _row('Cost', Amount(formatMoney(p.cost, m))),
+      _row(
+        'Value',
+        e.value == null
+            ? const Text('Unavailable')
+            : Amount(formatMoney(e.value!, m)),
+      ),
+      if (!e.closed && e.unrealized != null)
+        _row(
+          'Unrealized gain',
+          Amount(
+            signedMoney(e.unrealized!, m),
+            style: gainStyle(context, e.unrealized!),
+          ),
+        ),
+      if (!e.closed && pct != null)
+        _row(
+          'Unrealized %',
+          Amount(signedPercent(pct), style: gainStyle(context, pct)),
+        ),
+      _row(
+        'Realized gain',
+        Amount(
+          signedMoney(p.realized, m),
+          style: gainStyle(context, p.realized),
+        ),
+      ),
+      if (m == Measure.real && !e.closed && pct != null)
+        Amount(
+          roundHalfEven(pct, 2) >= Decimal.zero
+              ? 'Beat inflation by ${formatPercent(pct)} since purchase'
+              : 'Behind inflation by ${formatPercent(-pct)} since purchase',
+        ),
+    ];
+  }
 
   static String _summary(Transaction t) => switch (t.type) {
     TxType.buy || TxType.sell =>

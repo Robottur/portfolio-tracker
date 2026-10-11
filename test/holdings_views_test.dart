@@ -87,7 +87,7 @@ void main() {
   }
 
   Future<void> sortBy(WidgetTester tester, String label) async {
-    await tester.tap(find.byTooltip('Sort'));
+    await tester.tap(find.textContaining('Sort:'));
     await tester.pumpAndSettle();
     await tester.tap(find.text(label).last);
     await tester.pumpAndSettle();
