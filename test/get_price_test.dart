@@ -240,26 +240,55 @@ void main() {
     expect(requests.length, first);
   });
 
-  testWidgets('a result that lands after the date changed is dropped', (
-    tester,
-  ) async {
+  // Presses Get price, optionally moves the date to the 4th while the fetch
+  // is held, then lets the held response through inside the real zone.
+  Future<void> heldFetch(
+    WidgetTester tester, {
+    required bool changeDate,
+  }) async {
     final gate = Completer<void>();
     await boot(tester, routes, enabled: {'yahoo'}, gate: gate.future);
     await fill(tester, 'symbol', 'THYAO');
     await tester.tap(find.text('Get price'));
     await tester.pump();
-    await tester.tap(find.textContaining('Date  '));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.descendant(
-        of: find.byType(DatePickerDialog),
-        matching: find.text('4'),
-      ),
-    );
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
-    gate.complete();
+    if (changeDate) {
+      // Short pumps only: the source's 20 s timeout runs on the fake clock.
+      Future<void> frames() async {
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+      }
+
+      await tester.tap(find.textContaining('Date  '));
+      await frames();
+      await tester.tap(
+        find.descendant(
+          of: find.byType(DatePickerDialog),
+          matching: find.text('4'),
+        ),
+      );
+      await tester.tap(find.text('OK'));
+      await frames();
+    }
+    await tester.runAsync(() async {
+      gate.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
     await settle(tester);
+  }
+
+  testWidgets('a held response still fills the form when nothing changed', (
+    tester,
+  ) async {
+    await heldFetch(tester, changeDate: false);
+    expect(price(tester), '287.5');
+    expect(find.textContaining('Yahoo Finance'), findsOneWidget);
+  });
+
+  testWidgets('a result that lands after the date changed is dropped', (
+    tester,
+  ) async {
+    await heldFetch(tester, changeDate: true);
+    expect(requests, hasLength(1));
     expect(price(tester), '');
     expect(find.textContaining('Yahoo Finance'), findsNothing);
   });
