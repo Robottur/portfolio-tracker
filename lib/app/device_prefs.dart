@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:portfolio_core/portfolio_core.dart' show Measure;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -26,6 +27,7 @@ class DevicePrefs {
   static const _sortKey = 'holding_sort';
   static const _evdsKey = 'evds_key';
   static const _measureKey = 'measure';
+  static const _themeKey = 'theme_mode';
 
   String get deviceId => _p.getString(_idKey)!;
 
@@ -58,6 +60,11 @@ class DevicePrefs {
       Measure.values.asNameMap()[_p.getString(_measureKey)] ??
       Measure.tryNominal;
   Future<void> setMeasure(Measure v) => _ok(_p.setString(_measureKey, v.name));
+
+  ThemeMode get themeMode =>
+      ThemeMode.values.asNameMap()[_p.getString(_themeKey)] ?? ThemeMode.system;
+  Future<void> setThemeMode(ThemeMode v) =>
+      _ok(_p.setString(_themeKey, v.name));
 
   // The plugin reports a failed write as false; callers must not carry on.
   Future<void> _ok(Future<bool> write) async {

@@ -31,21 +31,31 @@ class AssetPortfolioApp extends StatelessWidget {
   final Future<PickedFolder?> Function() pick;
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Asset Portfolio',
-    // Above the Navigator, so dialogs and pushed routes are masked too.
-    builder: (_, child) => ListenableBuilder(
-      listenable: controller,
-      builder: (_, _) =>
-          PrivacyScope(masked: controller.privacyMode, child: child!),
-    ),
-    theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
-    home: ListenableBuilder(
-      listenable: controller,
-      builder: (_, _) =>
-          controller.scan?.descriptor != null && !controller.folderAccessLost
-          ? HomeShell(controller: controller, pick: pick)
-          : SetupScreen(controller: controller, pick: pick),
+  // Rebuilt on controller changes so the theme choice applies at once.
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (_, _) => MaterialApp(
+      title: 'Asset Portfolio',
+      // Above the Navigator, so dialogs and pushed routes are masked too.
+      builder: (_, child) => ListenableBuilder(
+        listenable: controller,
+        builder: (_, _) =>
+            PrivacyScope(masked: controller.privacyMode, child: child!),
+      ),
+      theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
+      darkTheme: ThemeData(
+        colorSchemeSeed: Colors.teal,
+        brightness: Brightness.dark,
+        useMaterial3: true,
+      ),
+      themeMode: controller.prefs.themeMode,
+      home: ListenableBuilder(
+        listenable: controller,
+        builder: (_, _) =>
+            controller.scan?.descriptor != null && !controller.folderAccessLost
+            ? HomeShell(controller: controller, pick: pick)
+            : SetupScreen(controller: controller, pick: pick),
+      ),
     ),
   );
 }

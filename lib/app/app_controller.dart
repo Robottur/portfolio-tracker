@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:decimal/decimal.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:http/http.dart' as http;
 import 'package:portfolio_core/portfolio_core.dart';
 
@@ -728,6 +729,11 @@ class AppController extends ChangeNotifier {
 
   Future<void> setPrivacy(bool on) async {
     await prefs.setPrivacyMode(on);
+    notifyListeners();
+  }
+
+  Future<void> setThemeMode(ThemeMode m) async {
+    await prefs.setThemeMode(m);
     notifyListeners();
   }
 

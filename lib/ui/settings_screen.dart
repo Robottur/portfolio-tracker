@@ -460,6 +460,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }),
           ),
           const Divider(height: 32),
+          Text('Appearance', style: heading),
+          SegmentedButton<ThemeMode>(
+            showSelectedIcon: false,
+            segments: const [
+              ButtonSegment(value: ThemeMode.system, label: Text('System')),
+              ButtonSegment(value: ThemeMode.light, label: Text('Light')),
+              ButtonSegment(value: ThemeMode.dark, label: Text('Dark')),
+            ],
+            selected: {_c.prefs.themeMode},
+            onSelectionChanged: (s) => _run(() async {
+              await _c.setThemeMode(s.first);
+              return null;
+            }),
+          ),
+          const Divider(height: 32),
           Text('About', style: heading),
           const Text('No telemetry, analytics or crash reporting.'),
         ],
