@@ -188,4 +188,37 @@ void main() {
       );
     });
   });
+
+  test('fund identity (Review Focus 1)', () {
+    expect(Instrument.create(AssetClass.fund, ' tte ').id, 'TEFAS:TTE');
+    expect(
+      () => Instrument.create(AssetClass.fund, 'TTEX'),
+      throwsFormatException,
+    );
+    expect(AssetClass.fromJson('FUND'), AssetClass.fund);
+  });
+
+  test('dividend and split are rejected for funds', () {
+    final f = Instrument.create(AssetClass.fund, 'TTE');
+    expect(
+      dividend(on: date(2026, 1, 2), instrument: f).validate(today: today),
+      contains('DIVIDEND is only allowed for BIST_SHARE'),
+    );
+    expect(
+      split(on: date(2026, 1, 2), instrument: f).validate(today: today),
+      contains('SPLIT is only allowed for BIST_SHARE'),
+    );
+  });
+
+  test('fund buy round-trips through json', () {
+    final f = Instrument.create(AssetClass.fund, 'TTE');
+    final t = buy(
+      on: date(2026, 10, 9),
+      qty: '100.5',
+      price: '1.157776',
+      instrument: f,
+    );
+    expect(Transaction.fromJson(t.toJson()).toJson(), t.toJson());
+    expect(Transaction.fromJson(t.toJson()).instrument, f);
+  });
 }

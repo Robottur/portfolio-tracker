@@ -56,6 +56,7 @@ class RefreshCoordinator {
     AssetClass.fx => on.contains('yahoo') ? 'yahoo' : 'tcmb',
     AssetClass.crypto => 'btcturk',
     AssetClass.gold => 'gold',
+    AssetClass.fund => 'tefas',
   };
 
   static String _closesId(AssetClass c) => switch (c) {
@@ -63,6 +64,7 @@ class RefreshCoordinator {
     AssetClass.fx => 'tcmb',
     AssetClass.crypto => 'btcturk',
     AssetClass.gold => 'gold',
+    AssetClass.fund => 'tefas',
   };
 
   Future<RefreshReport> refresh({

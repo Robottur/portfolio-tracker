@@ -2,7 +2,8 @@ enum AssetClass {
   bistShare('BIST_SHARE', 'XIST'),
   fx('FX', 'FX'),
   crypto('CRYPTO', 'CRYPTO'),
-  gold('GOLD', 'GOLD');
+  gold('GOLD', 'GOLD'),
+  fund('FUND', 'TEFAS');
 
   const AssetClass(this.json, this.prefix);
   final String json;
@@ -16,6 +17,7 @@ enum AssetClass {
 
 final _bist = RegExp(r'^[A-Z][A-Z0-9]{1,9}$');
 final _fx = RegExp(r'^[A-Z]{3}$');
+final _fund = RegExp(r'^[A-Z0-9]{3}$');
 final _crypto = RegExp(r'^[A-Z0-9]{2,10}$');
 
 bool _validSymbol(AssetClass c, String s) => switch (c) {
@@ -23,6 +25,7 @@ bool _validSymbol(AssetClass c, String s) => switch (c) {
   AssetClass.fx => _fx.hasMatch(s) && s != 'TRY',
   AssetClass.crypto => _crypto.hasMatch(s),
   AssetClass.gold => s == 'GRAM',
+  AssetClass.fund => _fund.hasMatch(s),
 };
 
 class Instrument {
