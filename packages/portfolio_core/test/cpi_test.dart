@@ -35,6 +35,31 @@ void main() {
     expect(s.firstMissing('2026-01', '2026-03'), '2026-02');
   });
 
+  test('gap before from is reported', () {
+    final s = series({'2026-01': '10', '2026-03': '10'});
+    expect(s.index('2026-03'), isNull);
+    expect(s.firstMissing('2026-03', '2026-05'), '2026-02');
+  });
+
+  test('percent -100 or less is rejected', () async {
+    final blobs = MemoryBlobStore();
+    await blobs.put(
+      'cpi',
+      Uint8List.fromList('{"evds":{"2026-01":"-100","2026-02":"5"}}'.codeUnits),
+    );
+    final store = PriceStore(blobs);
+    await store.load();
+    expect(store.cpi.months.keys, ['2026-02']);
+    expect(
+      () => store.setCpi({'2026-01': Decimal.parse('-100')}, 'tcmb'),
+      throwsArgumentError,
+    );
+    expect(
+      () => store.setManualCpi('2026-01', Decimal.parse('-150')),
+      throwsArgumentError,
+    );
+  });
+
   test('nothing missing inside a full chain', () {
     final s = series({'2026-01': '10', '2026-02': '10'});
     expect(s.firstMissing('2025-12', '2026-09'), isNull);

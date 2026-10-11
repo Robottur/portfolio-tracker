@@ -61,12 +61,21 @@ class PriceStore implements PriceLookup {
     return CpiSeries(out);
   }
 
+  // At or below -100% the chained level hits zero and division fails.
+  static bool _validCpiPercent(Decimal p) => p > Decimal.fromInt(-100);
+
   Future<void> setCpi(Map<String, Decimal> months, String source) {
+    if (!months.values.every(_validCpiPercent)) {
+      throw ArgumentError.value(months, 'months', 'percent must be above -100');
+    }
     _cpi[source] = Map.of(months);
     return _writeCpi();
   }
 
   Future<void> setManualCpi(String month, Decimal percent) {
+    if (!_validCpiPercent(percent)) {
+      throw ArgumentError.value(percent, 'percent');
+    }
     (_cpi['manual'] ??= {})[month] = percent;
     return _writeCpi();
   }
@@ -102,7 +111,8 @@ class PriceStore implements PriceLookup {
               : null;
           if (e.key is String &&
               RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(e.key as String) &&
-              p != null) {
+              p != null &&
+              _validCpiPercent(p)) {
             (_cpi[src] ??= {})[e.key as String] = p;
           }
         }

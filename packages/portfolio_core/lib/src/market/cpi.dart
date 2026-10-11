@@ -59,7 +59,7 @@ class CpiSeries {
       return fromMonth;
     }
     final end = toMonth.compareTo(latestMonth!) < 0 ? toMonth : latestMonth!;
-    var m = fromMonth.compareTo(first) < 0 ? first : fromMonth;
+    var m = first; // a gap before `from` also breaks index(from)
     for (; m.compareTo(end) <= 0; m = _shift(m, 1)) {
       if (!months.containsKey(m)) return m;
     }
