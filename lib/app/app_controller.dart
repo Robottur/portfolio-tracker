@@ -289,14 +289,11 @@ class AppController extends ChangeNotifier {
     final List<PriceObservation> got;
     PriceObservation? pick;
     if (date == today) {
-      got = await src.latest([inst]);
+      got = await refresher.fetchOnce(src, () => src.latest([inst]));
       pick = got.isEmpty ? null : got.first;
     } else {
-      got = await src.closes(
-        inst,
-        date.subtract(const Duration(days: 10)),
-        date,
-      );
+      final from = date.subtract(const Duration(days: 10));
+      got = await refresher.fetchOnce(src, () => src.closes(inst, from, date));
       for (final o in got) {
         if (!o.sessionDate.isAfter(date) &&
             (pick == null || o.sessionDate.isAfter(pick.sessionDate))) {

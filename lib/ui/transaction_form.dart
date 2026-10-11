@@ -107,8 +107,15 @@ class _TransactionFormState extends State<TransactionForm> {
         // Shows the value actually read, so a thousands-separator misread is visible.
         helperText: parsed == null || masked ? null : '= $parsed',
       ),
-      onChanged: (_) => setState(() {}),
+      onChanged: (_) => setState(() {
+        if (identical(c, _price)) _clearPriceInfo();
+      }),
     );
+  }
+
+  void _clearPriceInfo() {
+    _priceNote = null;
+    _priceError = null;
   }
 
   Widget _intField(
@@ -204,6 +211,7 @@ class _TransactionFormState extends State<TransactionForm> {
     );
     if (d == null) return;
     setState(() {
+      _clearPriceInfo();
       _date = DateTime.utc(d.year, d.month, d.day);
       if (!_orderTouched) _order.text = '${_c.nextDayOrder(_date)}';
     });
@@ -221,7 +229,14 @@ class _TransactionFormState extends State<TransactionForm> {
   }
 
   Future<void> _getPrice(Instrument inst) async {
-    final src = _c.priceSourceFor(inst.assetClass, _date);
+    // What was asked for; a result for anything else is dropped.
+    final date = _date, cls = _class;
+    bool stale() =>
+        !mounted ||
+        _date != date ||
+        _class != cls ||
+        _instrument()?.id != inst.id;
+    final src = _c.priceSourceFor(inst.assetClass, date);
     if (!_c.prefs.enabledSources.contains(src.id)) {
       final ok = await showDialog<bool>(
         context: context,
@@ -242,36 +257,41 @@ class _TransactionFormState extends State<TransactionForm> {
           ],
         ),
       );
-      if (ok != true || !mounted) return;
+      if (ok != true || stale()) return;
     }
     setState(() {
       _fetching = true;
       _priceNote = null;
       _priceError = null;
     });
-    String? note, error;
+    PriceObservation? obs;
+    String? error;
     try {
       if (!_c.prefs.enabledSources.contains(src.id)) {
         await _c.setSourceEnabled(src.id, true);
       }
-      final obs = await _c.fetchPriceFor(inst, _date);
-      if (obs == null) {
-        error = 'No price found for that date';
-      } else {
-        _price.text = roundHalfEven(obs.price, 8).toString();
-        final tag = priceTag(obs);
-        note = '${src.label} · ${stamp(obs)}${tag == null ? '' : ' · $tag'}';
+      if (!stale()) {
+        obs = await _c.fetchPriceFor(inst, date);
+        if (obs == null) error = 'No price found for that date';
       }
     } on SourceException catch (e) {
       error = '${src.label}: ${e.message}';
     } on Object {
       error = 'Could not get a price';
     }
-    if (!mounted) return;
+    if (stale()) {
+      if (mounted) setState(() => _fetching = false);
+      return;
+    }
     setState(() {
       _fetching = false;
-      _priceNote = note;
       _priceError = error;
+      if (obs != null) {
+        _price.text = roundHalfEven(obs.price, 8).toString();
+        final tag = priceTag(obs);
+        _priceNote =
+            '${src.label} · ${stamp(obs)}${tag == null ? '' : ' · $tag'}';
+      }
     });
   }
 
@@ -356,6 +376,7 @@ class _TransactionFormState extends State<TransactionForm> {
                 DropdownMenuItem(value: c, child: Text(assetClassLabel(c))),
             ],
             onChanged: (c) => setState(() {
+              _clearPriceInfo();
               _class = c!;
               if (c == AssetClass.gold) {
                 _symbol.text = 'GRAM';
@@ -378,7 +399,7 @@ class _TransactionFormState extends State<TransactionForm> {
               hintText: fund ? 'Fund code, e.g. TTE' : null,
               errorText: built.symbolError,
             ),
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => setState(_clearPriceInfo),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,

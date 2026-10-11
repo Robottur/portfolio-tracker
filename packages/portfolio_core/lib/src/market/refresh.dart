@@ -67,6 +67,37 @@ class RefreshCoordinator {
     AssetClass.fund => 'tefas',
   };
 
+  /// One user-requested fetch that honours and feeds the same back-off as
+  /// [refresh]. The caller stores the result.
+  Future<List<PriceObservation>> fetchOnce(
+    PriceSource source,
+    Future<List<PriceObservation>> Function() call,
+  ) async {
+    final st = _status.putIfAbsent(source.id, SourceStatus.new);
+    final retry = st.retryNotBefore;
+    if (retry != null && nowUtc().isBefore(retry)) {
+      final t = retry.toUtc();
+      String two(int n) => n.toString().padLeft(2, '0');
+      throw SourceException(
+        source.id,
+        'Rate limited; try again after ${two(t.hour)}:${two(t.minute)} UTC',
+      );
+    }
+    try {
+      final obs = await call();
+      st
+        ..lastSuccess = nowUtc()
+        ..lastError = null
+        ..retryNotBefore = null;
+      return obs;
+    } on SourceException catch (e) {
+      st.lastError = e.message;
+      final after = e.retryAfter;
+      if (after != null) st.retryNotBefore = nowUtc().add(after);
+      rethrow;
+    }
+  }
+
   Future<RefreshReport> refresh({
     required List<Instrument> current,
     required Map<DateTime, List<Instrument>> history,

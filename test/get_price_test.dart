@@ -1,8 +1,11 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:asset_portfolio/app/app_controller.dart';
 import 'package:asset_portfolio/app/device_prefs.dart';
 import 'package:asset_portfolio/main.dart';
+import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -33,6 +36,8 @@ void main() {
     http.Response Function(Uri) answer, {
     Set<String> enabled = const {},
     DateTime? now,
+    Future<void>? gate,
+    Future<void> Function()? seed,
   }) async {
     tester.view.physicalSize = const Size(700, 1400);
     tester.view.devicePixelRatio = 1;
@@ -45,11 +50,13 @@ void main() {
         privateDir: tmp,
         network: MockClient((r) async {
           requests.add(r.url);
+          await gate;
           return answer(r.url);
         }),
         nowUtc: () => now ?? DateTime.utc(2026, 10, 9, 20),
       );
       await c.openFolder(MemoryRecordFolder(), 'mem', createName: 'Main');
+      await seed?.call();
     });
     await tester.pumpWidget(AssetPortfolioApp(controller: c));
     await tester.tap(find.byIcon(Icons.receipt_long_outlined));
@@ -182,8 +189,78 @@ void main() {
     await tester.tap(find.text('Gold').last);
     await tester.pumpAndSettle();
     await getPrice(tester);
-    final frac = price(tester).split('.');
-    expect(frac, hasLength(2));
-    expect(frac[1].length, lessThanOrEqualTo(8));
+    Decimal meta(String f) => Decimal.parse(
+      (jsonDecode(_fx(f))['chart']['result'][0]['meta']['regularMarketPrice']
+              as num)
+          .toString(),
+    );
+    final raw = divide(
+      meta('yahoo_gcf.json') * meta('yahoo_usdtry.json'),
+      Decimal.parse('31.1034768'),
+    );
+    expect(raw.scale, greaterThan(8));
+    expect(price(tester), roundHalfEven(raw, 8).toString());
+  });
+
+  testWidgets('a second press after a 429 sends nothing; refresh stays off', (
+    tester,
+  ) async {
+    await boot(
+      tester,
+      (_) => http.Response('', 429, headers: {'retry-after': '60'}),
+      enabled: {'tefas'},
+      seed: () async {
+        await c.addTransaction(
+          Transaction.buy(
+            instrument: Instrument.create(AssetClass.fund, 'TTE'),
+            date: DateTime.utc(2026, 10, 1),
+            dayOrder: 10,
+            quantity: Decimal.parse('10'),
+            unitPrice: Decimal.parse('1'),
+            fees: Decimal.zero,
+          ),
+        );
+      },
+    );
+    await tester.tap(find.byKey(const Key('assetClass')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fund').last);
+    await tester.pumpAndSettle();
+    await fill(tester, 'symbol', 'TTE');
+    await getPrice(tester);
+    final first = requests.length;
+    expect(first, greaterThan(0));
+    await getPrice(tester);
+    expect(requests.length, first);
+    expect(
+      find.textContaining('TEFAS (funds): Rate limited; try again after'),
+      findsOneWidget,
+    );
+    await tester.runAsync(() => c.refreshPrices(manual: true));
+    expect(requests.length, first);
+  });
+
+  testWidgets('a result that lands after the date changed is dropped', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    await boot(tester, routes, enabled: {'yahoo'}, gate: gate.future);
+    await fill(tester, 'symbol', 'THYAO');
+    await tester.tap(find.text('Get price'));
+    await tester.pump();
+    await tester.tap(find.textContaining('Date  '));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(DatePickerDialog),
+        matching: find.text('4'),
+      ),
+    );
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    gate.complete();
+    await settle(tester);
+    expect(price(tester), '');
+    expect(find.textContaining('Yahoo Finance'), findsNothing);
   });
 }

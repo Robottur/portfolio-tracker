@@ -368,4 +368,67 @@ void main() {
     });
     expect(RefreshCoordinator.hostsFor([]), isEmpty);
   });
+
+  group('fetchOnce', () {
+    test('a 429 from it blocks the next refresh and the next fetch', () async {
+      final src = FakeSource('yahoo', {AssetClass.bistShare});
+      var now = testNow;
+      final rc = RefreshCoordinator(
+        sources: [src],
+        enabledSourceIds: () => {'yahoo'},
+        store: PriceStore(MemoryBlobStore()),
+        nowUtc: () => now,
+      );
+      final i = Instrument.create(AssetClass.bistShare, 'THYAO');
+      await expectLater(
+        rc.fetchOnce(
+          src,
+          () async => throw SourceException(
+            'yahoo',
+            'Rate limited (429)',
+            retryAfter: const Duration(seconds: 60),
+          ),
+        ),
+        throwsA(isA<SourceException>()),
+      );
+      await rc.refresh(current: [i], history: {}, manual: true);
+      expect(src.calls, isEmpty);
+      await expectLater(
+        rc.fetchOnce(src, () => src.latest([i])),
+        throwsA(
+          isA<SourceException>().having(
+            (e) => e.message,
+            'message',
+            startsWith('Rate limited; try again after'),
+          ),
+        ),
+      );
+      expect(src.calls, isEmpty);
+      now = testNow.add(const Duration(seconds: 61));
+      expect(await rc.fetchOnce(src, () => src.latest([i])), hasLength(1));
+    });
+
+    test('a back-off set by refresh blocks it', () async {
+      final src = FakeSource('yahoo', {AssetClass.bistShare})
+        ..failWith = SourceException(
+          'yahoo',
+          'x',
+          retryAfter: const Duration(minutes: 5),
+        );
+      final rc = RefreshCoordinator(
+        sources: [src],
+        enabledSourceIds: () => {'yahoo'},
+        store: PriceStore(MemoryBlobStore()),
+        nowUtc: () => testNow,
+      );
+      final i = Instrument.create(AssetClass.bistShare, 'THYAO');
+      await rc.refresh(current: [i], history: {}, manual: true);
+      src.calls.clear();
+      await expectLater(
+        rc.fetchOnce(src, () => src.latest([i])),
+        throwsA(isA<SourceException>()),
+      );
+      expect(src.calls, isEmpty);
+    });
+  });
 }
