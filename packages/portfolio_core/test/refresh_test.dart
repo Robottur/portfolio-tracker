@@ -82,6 +82,33 @@ void main() {
     );
   });
 
+  test('routing helpers', () {
+    expect(RefreshCoordinator.latestSourceId(AssetClass.fund, {}), 'tefas');
+    expect(RefreshCoordinator.closesSourceId(AssetClass.fund), 'tefas');
+    expect(RefreshCoordinator.latestSourceId(AssetClass.fx, {'tcmb'}), 'tcmb');
+    expect(
+      RefreshCoordinator.latestSourceId(AssetClass.fx, {'yahoo'}),
+      'yahoo',
+    );
+  });
+
+  test(
+    'fund holding with only tefas enabled calls only tefas latest',
+    () async {
+      final fund = Instrument.create(AssetClass.fund, 'TTE');
+      final tefas = FakeSource('tefas', {AssetClass.fund});
+      final r = RefreshCoordinator(
+        sources: [...src.values, tefas],
+        enabledSourceIds: () => {'tefas'},
+        store: store,
+        nowUtc: () => now,
+      );
+      await r.refresh(current: [fund], history: {});
+      expect(tefas.calls, ['latest:${fund.id}']);
+      expect(src.values.fold(0, (n, s) => n + s.calls.length), 0);
+    },
+  );
+
   int totalCalls() => src.values.fold(0, (n, s) => n + s.calls.length);
 
   test('no source enabled makes zero calls', () async {

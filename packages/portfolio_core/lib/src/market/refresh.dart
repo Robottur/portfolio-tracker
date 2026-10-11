@@ -51,7 +51,7 @@ class RefreshCoordinator {
     for (final s in enabled) ...s.domains,
   };
 
-  String? _latestId(AssetClass c, Set<String> on) => switch (c) {
+  static String latestSourceId(AssetClass c, Set<String> on) => switch (c) {
     AssetClass.bistShare => 'yahoo',
     AssetClass.fx => on.contains('yahoo') ? 'yahoo' : 'tcmb',
     AssetClass.crypto => 'btcturk',
@@ -59,7 +59,7 @@ class RefreshCoordinator {
     AssetClass.fund => 'tefas',
   };
 
-  static String _closesId(AssetClass c) => switch (c) {
+  static String closesSourceId(AssetClass c) => switch (c) {
     AssetClass.bistShare => 'isyatirim',
     AssetClass.fx => 'tcmb',
     AssetClass.crypto => 'btcturk',
@@ -130,8 +130,8 @@ class RefreshCoordinator {
 
     final groups = <String, List<Instrument>>{};
     for (final i in current) {
-      final id = _latestId(i.assetClass, on);
-      if (usable(id) != null) groups.putIfAbsent(id!, () => []).add(i);
+      final id = latestSourceId(i.assetClass, on);
+      if (usable(id) != null) groups.putIfAbsent(id, () => []).add(i);
     }
     for (final e in groups.entries) {
       await call(byId[e.key]!, () => byId[e.key]!.latest(e.value));
@@ -146,7 +146,7 @@ class RefreshCoordinator {
         if (windows.any((w) => !day.isBefore(w.$1) && !day.isAfter(w.$2))) {
           continue;
         }
-        final s = usable(_closesId(i.assetClass));
+        final s = usable(closesSourceId(i.assetClass));
         if (s == null) continue;
         final from = day.subtract(const Duration(days: 10));
         if (await call(s, () => s.closes(i, from, day))) {
