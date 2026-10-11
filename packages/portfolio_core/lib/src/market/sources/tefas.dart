@@ -77,10 +77,11 @@ class TefasSource implements PriceSource {
       }
       if (rows is List && rows.isNotEmpty) {
         final parsed = _parse(code, rows, from, to);
-        if (guessed && rows.any((r) => r is Map && r['fonKodu'] == code)) {
-          await rememberKind?.call(code, kind);
+        // Rows for another code say nothing about this fund's type.
+        if (rows.any((r) => r is Map && r['fonKodu'] == code)) {
+          if (guessed) await rememberKind?.call(code, kind);
+          return (parsed, kind);
         }
-        return (parsed, kind);
       }
     }
     return (const <PriceObservation>[], null);
@@ -136,11 +137,7 @@ class TefasSource implements PriceSource {
           from,
           today,
         );
-        if (rows.isNotEmpty) {
-          out.add(
-            rows.reduce((a, b) => b.sessionDate.isAfter(a.sessionDate) ? b : a),
-          );
-        }
+        out.addAll(rows);
       } on SourceException catch (e) {
         if (e.retryAfter != null) {
           rethrow; // back off; do not hit the limit again

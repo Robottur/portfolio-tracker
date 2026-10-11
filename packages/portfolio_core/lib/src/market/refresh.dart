@@ -165,7 +165,25 @@ class RefreshCoordinator {
       if (usable(id) != null) groups.putIfAbsent(id, () => []).add(i);
     }
     for (final e in groups.entries) {
-      await call(byId[e.key]!, () => byId[e.key]!.latest(e.value));
+      final s = byId[e.key]!;
+      if (s.id != 'tefas') {
+        await call(s, () => s.latest(e.value));
+        continue;
+      }
+      // One request per fund, stored at once: a rate limit part-way through
+      // must not discard the funds already fetched.
+      var limited = false;
+      for (final i in e.value) {
+        if (limited) break;
+        await call(s, () async {
+          try {
+            return await s.latest([i]);
+          } on SourceException catch (x) {
+            limited = x.retryAfter != null;
+            rethrow;
+          }
+        });
+      }
     }
 
     for (final e in history.entries) {

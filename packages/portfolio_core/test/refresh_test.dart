@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:decimal/decimal.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:portfolio_core/portfolio_core.dart';
 import 'package:test/test.dart';
 
@@ -108,6 +113,79 @@ void main() {
       expect(src.values.fold(0, (n, s) => n + s.calls.length), 0);
     },
   );
+
+  group('tefas per-fund latest', () {
+    final funds = [
+      for (final c in ['AAA', 'BBB', 'CCC', 'DDD', 'EEE', 'FFF', 'GGG'])
+        Instrument.create(AssetClass.fund, c),
+    ];
+    RefreshCoordinator make(PriceSource tefas) => RefreshCoordinator(
+      sources: [tefas],
+      enabledSourceIds: () => {'tefas'},
+      store: store,
+      nowUtc: () => now,
+    );
+
+    test('stores what it got before a 429 and then backs off', () async {
+      var requests = 0;
+      final tefas = TefasSource(
+        MockClient((req) async {
+          requests++;
+          if (requests > 6) {
+            return http.Response('', 429, headers: {'retry-after': '60'});
+          }
+          final code = (jsonDecode(req.body) as Map)['fonKodu'] as String;
+          return http.Response(
+            jsonEncode({
+              'errorMessage': null,
+              'resultList': [
+                {'fonKodu': code, 'tarih': '2026-10-09', 'fiyat': 1.5},
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        nowUtc: () => now,
+      );
+      final r = make(tefas);
+      final rep = await r.refresh(current: funds, history: {});
+      expect(requests, 7);
+      expect(rep.fetched, 6);
+      expect(store.latest(funds.first.id), isNotNull);
+      expect(store.latest(funds.last.id), isNull);
+      expect(
+        r.status['tefas']!.retryNotBefore,
+        now.add(const Duration(seconds: 60)),
+      );
+      now = now.add(const Duration(seconds: 30));
+      await r.refresh(current: funds, history: {}, manual: true);
+      expect(requests, 7);
+    });
+
+    test('latest caches every row for later closes', () async {
+      var requests = 0;
+      final body = File('test/fixtures/tefas_tte_yat.json').readAsStringSync();
+      final tefas = TefasSource(
+        MockClient((_) async {
+          requests++;
+          return http.Response(
+            body,
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        nowUtc: () => now,
+      );
+      final tte = Instrument.create(AssetClass.fund, 'TTE');
+      await make(tefas).refresh(current: [tte], history: {});
+      expect(requests, 1);
+      expect(
+        store.closeOnOrBefore(tte.id, date(2026, 10, 5))?.sessionDate,
+        date(2026, 10, 5),
+      );
+    });
+  });
 
   int totalCalls() => src.values.fold(0, (n, s) => n + s.calls.length);
 

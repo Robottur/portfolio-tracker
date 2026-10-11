@@ -36,11 +36,15 @@ const requestTimeout = Duration(seconds: 20);
 /// pages served with 200) are errors; callers keep their last good price.
 void checkResponse(http.Response r, String sourceId) {
   if (r.statusCode == 429) {
-    final secs = int.tryParse(r.headers['retry-after'] ?? '');
+    // Never null: a 429 without a usable header still has to back off.
+    final secs =
+        int.tryParse(r.headers['retry-after'] ?? '') ??
+        int.tryParse(r.headers['ratelimit-reset'] ?? '') ??
+        60;
     throw SourceException(
       sourceId,
       'Rate limited (429)',
-      retryAfter: secs == null ? null : Duration(seconds: secs),
+      retryAfter: Duration(seconds: secs.clamp(0, 3600)),
     );
   }
   if (r.statusCode < 200 || r.statusCode > 299) {

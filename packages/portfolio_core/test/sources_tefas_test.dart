@@ -139,6 +139,56 @@ void main() {
     );
   });
 
+  group('429 back-off', () {
+    Future<Duration?> retryFor(Map<String, String> headers) async {
+      final s = TefasSource(
+        MockClient((_) async => http.Response('', 429, headers: headers)),
+        nowUtc: () => testNow,
+      );
+      try {
+        await s.closes(tte, date(2026, 10, 1), date(2026, 10, 9));
+      } on SourceException catch (e) {
+        return e.retryAfter;
+      }
+      return null;
+    }
+
+    test('no headers: 60 s', () async {
+      expect(await retryFor({}), const Duration(seconds: 60));
+    });
+    test('ratelimit-reset seconds', () async {
+      expect(
+        await retryFor({'ratelimit-reset': '42'}),
+        const Duration(seconds: 42),
+      );
+    });
+    test('Retry-After is clamped to an hour', () async {
+      expect(
+        await retryFor({'retry-after': '99999'}),
+        const Duration(seconds: 3600),
+      );
+    });
+  });
+
+  test('latest returns every in-window row', () async {
+    final s = make((_) => _fx('tefas_tte_yat.json'));
+    final r = await s.latest([tte]);
+    expect(r, hasLength(7));
+    expect(r.every((o) => o.kind == PriceKind.close), isTrue);
+  });
+
+  test('rows for another code do not set or remember a kind', () async {
+    final remembered = <String>[];
+    final s = make(
+      (_) => _fx('tefas_tte_yat.json').replaceAll('"TTE"', '"OTH"'),
+      rememberKind: (c, k) async => remembered.add('$c:$k'),
+    );
+    expect(await s.closes(tte, date(2026, 10, 1), date(2026, 10, 9)), isEmpty);
+    expect(remembered, isEmpty);
+    // Nothing matched, so every kind was still tried.
+    expect(reqs, hasLength(3));
+  });
+
   test('a 40-day window is two requests', () async {
     final s = make((_) => _fx('tefas_tte_yat.json'));
     await s.closes(tte, date(2026, 9, 1), date(2026, 10, 10));
@@ -151,10 +201,9 @@ void main() {
     );
   });
 
-  test('latest takes the newest row from a 10-day window', () async {
+  test('latest requests a 10-day window', () async {
     final s = make((_) => _fx('tefas_tte_yat.json'));
-    final r = await s.latest([tte]);
-    expect(r.single.price, Decimal.parse('1.157776'));
+    await s.latest([tte]);
     final b = jsonDecode(reqs.single.body) as Map;
     expect(b['basTarih'], '20260930');
     expect(b['bitTarih'], '20261010');
