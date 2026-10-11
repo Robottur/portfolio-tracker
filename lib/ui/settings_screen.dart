@@ -31,6 +31,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late DateTime _date = _c.today;
   final _symbol = TextEditingController();
   final _price = TextEditingController();
+  late final _evdsKey = TextEditingController(text: _c.prefs.evdsKey ?? '');
+  final _cpiMonth = TextEditingController();
+  final _cpiPercent = TextEditingController();
   String? _message;
 
   AppController get _c => widget.controller;
@@ -39,6 +42,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _symbol.dispose();
     _price.dispose();
+    _evdsKey.dispose();
+    _cpiMonth.dispose();
+    _cpiPercent.dispose();
     super.dispose();
   }
 
@@ -129,6 +135,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ? 'Folder'
       : i.recordIds.map((r) => _bareId.hasMatch(r) ? '$r.json' : r).join(', ');
 
+  static const _cpiSource = {
+    'evds': 'EVDS',
+    'tcmb': 'TCMB',
+    'manual': 'manual',
+  };
+
+  String? _cpiValidation() => validateManualCpi(
+    _cpiMonth.text.trim(),
+    _cpiPercent.text,
+    today: _c.today,
+    manualMonths: {
+      for (final e in _c.prices.cpi.months.entries)
+        if (e.value.source == 'manual') e.key,
+    },
+  );
+
+  Future<void> _addMonth() => _run(() async {
+    final t = _cpiPercent.text.trim();
+    final neg = t.startsWith('-');
+    final d = Decimal.parse(parseUserDecimal(neg ? t.substring(1) : t)!);
+    await _c.setManualCpi(_cpiMonth.text.trim(), neg ? -d : d);
+    _cpiMonth.clear();
+    _cpiPercent.clear();
+    return null;
+  });
+
+  Future<void> _saveKey() => _run(() async {
+    await _c.setEvdsKey(_evdsKey.text);
+    return null;
+  });
+
   String _status(String id) {
     final s = _c.refresher.status[id];
     return [
@@ -157,6 +194,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         : null;
     final built = _instrument();
     final isGold = _class == AssetClass.gold;
+    final cpiReady =
+        _cpiMonth.text.trim().isNotEmpty && _cpiPercent.text.trim().isNotEmpty;
+    final cpiError = cpiReady ? _cpiValidation() : null;
     final heading = Theme.of(context).textTheme.titleMedium;
     final problemsSection = [
       Text('Problems', style: heading),
@@ -216,13 +256,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const Divider(height: 32),
           Text('Price sources', style: heading),
-          for (final s in _c.sources)
+          for (final s in _c.sources) ...[
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(s.label),
               subtitle: Text(
-                'Sends: asset symbols. Contacts: ${s.domains.join(', ')}. '
-                'Your quantities and costs are never sent.'
+                '${s is InflationSource ? 'Sends: nothing about your holdings. Contacts: ${s.domains.join(', ')}.' : 'Sends: asset symbols. Contacts: ${s.domains.join(', ')}. Your quantities and costs are never sent.'}'
                 '${_status(s.id).isEmpty ? '' : '\n${_status(s.id)}'}',
               ),
               value: _c.prefs.enabledSources.contains(s.id),
@@ -231,6 +270,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 return null;
               }),
             ),
+            if (s.id == 'evds')
+              Focus(
+                onFocusChange: (f) {
+                  if (!f) _saveKey();
+                },
+                child: TextField(
+                  key: const Key('evdsKey'),
+                  controller: _evdsKey,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(labelText: 'EVDS key'),
+                  onSubmitted: (_) => _saveKey(),
+                ),
+              ),
+          ],
           Align(
             alignment: Alignment.centerLeft,
             child: OutlinedButton(
@@ -316,6 +371,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 }),
               ),
             ),
+          const Divider(height: 32),
+          Text('Inflation', style: heading),
+          for (final e
+              in (_c.prices.cpi.months.entries.toList()
+                ..sort((a, b) => b.key.compareTo(a.key))))
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Amount(
+                '${e.key}  ${e.value.percent >= Decimal.zero ? '+' : ''}'
+                '${formatPercent(e.value.percent)}  '
+                '(${_cpiSource[e.value.source] ?? e.value.source})',
+              ),
+              trailing: e.value.source != 'manual'
+                  ? null
+                  : IconButton(
+                      tooltip: 'Delete manual month',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => _run(() async {
+                        await _c.removeManualCpi(e.key);
+                        return null;
+                      }),
+                    ),
+            ),
+          TextField(
+            key: const Key('cpiMonth'),
+            controller: _cpiMonth,
+            decoration: InputDecoration(
+              labelText: 'Month (YYYY-MM)',
+              errorText: cpiError != null && cpiError.startsWith('Month')
+                  ? cpiError
+                  : null,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          TextField(
+            key: const Key('cpiPercent'),
+            controller: _cpiPercent,
+            keyboardType: const TextInputType.numberWithOptions(
+              decimal: true,
+              signed: true,
+            ),
+            decoration: InputDecoration(
+              labelText: 'Monthly change (%)',
+              errorText: cpiError != null && !cpiError.startsWith('Month')
+                  ? cpiError
+                  : null,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton(
+              onPressed:
+                  cpiReady && cpiError == null && !(scan?.readOnly ?? true)
+                  ? _addMonth
+                  : null,
+              child: const Text('Add month'),
+            ),
+          ),
           if (!widget.problemsFirst) ...[
             const Divider(height: 32),
             ...problemsSection,

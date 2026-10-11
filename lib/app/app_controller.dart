@@ -33,6 +33,8 @@ class AppController extends ChangeNotifier {
       TcmbSource(client, nowUtc: _nowUtc),
       BtcTurkSource(client, nowUtc: _nowUtc),
       BinanceSource(client, nowUtc: _nowUtc),
+      TcmbCpiSource(client),
+      EvdsSource(client, key: () => prefs.evdsKey, nowUtc: _nowUtc),
       TefasSource(
         client,
         nowUtc: _nowUtc,
@@ -297,6 +299,40 @@ class AppController extends ChangeNotifier {
     if (!prefs.enabledSources.contains(src.id)) {
       throw StateError('Source is disabled');
     }
+    final canFall =
+        src.id == 'btcturk' && prefs.enabledSources.contains('binance');
+    var got = <PriceObservation>[];
+    PriceObservation? pick;
+    SourceException? failure;
+    try {
+      (got, pick) = await _fetchFrom(src, inst, date);
+    } on SourceException catch (e) {
+      if (!canFall) rethrow;
+      failure = e;
+    }
+    // A coin BtcTurk does not list: Binance, once.
+    if (pick == null && canFall) {
+      try {
+        (got, pick) = await _fetchFrom(
+          _sources.firstWhere((s) => s.id == 'binance'),
+          inst,
+          date,
+        );
+      } on SourceException {
+        if (failure != null) throw failure;
+        rethrow;
+      }
+    }
+    await prices.addFetched(got);
+    notifyListeners();
+    return pick;
+  });
+
+  Future<(List<PriceObservation>, PriceObservation?)> _fetchFrom(
+    PriceSource src,
+    Instrument inst,
+    DateTime date,
+  ) async {
     final List<PriceObservation> got;
     PriceObservation? pick;
     if (date == today) {
@@ -314,18 +350,24 @@ class AppController extends ChangeNotifier {
         }
       }
     }
-    await prices.addFetched(got);
-    notifyListeners();
-    return pick;
-  });
+    return (got, pick);
+  }
 
   Future<void> _refreshPrices(bool manual) async {
-    if (prefs.enabledSources.isEmpty) return;
+    final on = prefs.enabledSources;
+    if (on.isEmpty) return;
     final txs = transactions;
+    final fxOn = on.contains('yahoo') || on.contains('tcmb');
+    final first = txs.isEmpty
+        ? null
+        : txs
+              .map((t) => t.effectiveDate)
+              .reduce((a, b) => a.isBefore(b) ? a : b);
     await refresher.refresh(
       current: [
         for (final p in replayNow.positions.values)
           if (p.quantity > Decimal.zero) p.instrument,
+        if (fxOn && txs.isNotEmpty) Instrument.create(AssetClass.fx, 'USD'),
       ],
       history: historicalPriceNeeds(
         today: today,
@@ -333,9 +375,83 @@ class AppController extends ChangeNotifier {
         calendar: _calendar,
       ),
       manual: manual,
+      usdDates: !fxOn || first == null
+          ? const {}
+          : {
+              for (final t in txs) t.effectiveDate,
+              for (final p in Period.values)
+                if (p != Period.lifetime) baselineFor(p, today, _calendar),
+              first.subtract(const Duration(days: 1)),
+            },
     );
+    await refresher.refreshInflation(from: first ?? today, manual: manual);
     notifyListeners();
   }
+
+  /// Null for TRY. Rates are built fresh: they read the stores lazily.
+  Rates? ratesFor(Measure m) => switch (m) {
+    Measure.tryNominal => null,
+    Measure.usd => UsdRates(prices),
+    Measure.real => RealRates(prices.cpi, today: today),
+  };
+
+  String? measureUnavailable(Measure m) => switch (m) {
+    Measure.usd
+        when !prefs.enabledSources.any((s) => s == 'yahoo' || s == 'tcmb') =>
+      'Enable a currency source for USD returns',
+    Measure.real when prices.cpi.latestMonth == null =>
+      'Add inflation data in Settings',
+    _ => null,
+  };
+
+  PeriodResult displayPeriodIn(Measure m, Period p) {
+    final r = ratesFor(m);
+    return r == null
+        ? displayPeriod(p)
+        : measuredPeriod(
+            rates: r,
+            period: p,
+            today: today,
+            transactions: displayTransactions,
+            prices: prices,
+            calendar: _calendar,
+          );
+  }
+
+  (ReplayResult, PriceLookup)? holdingsIn(Measure m) {
+    final r = ratesFor(m);
+    if (r == null) return (displayReplay, prices);
+    if (measureUnavailable(m) != null) return null;
+    try {
+      return (
+        replay(convertTransactions(displayTransactions, r), through: today),
+        convertPrices(prices, r),
+      );
+    } on MissingRate {
+      return null;
+    }
+  }
+
+  Future<void> setMeasure(Measure m) async {
+    await prefs.setMeasure(m);
+    notifyListeners();
+  }
+
+  Future<void> setEvdsKey(String? v) async {
+    await prefs.setEvdsKey(v);
+    notifyListeners();
+  }
+
+  Future<void> setManualCpi(String month, Decimal percent) =>
+      _pricesSerial(() async {
+        await prices.setManualCpi(month, percent);
+        notifyListeners();
+      });
+
+  Future<void> removeManualCpi(String month) => _pricesSerial(() async {
+    await prices.removeManualCpi(month);
+    notifyListeners();
+  });
 
   Future<void> setSourceEnabled(String id, bool on) async {
     final next = {...prefs.enabledSources};

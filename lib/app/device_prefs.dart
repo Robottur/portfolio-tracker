@@ -1,3 +1,4 @@
+import 'package:portfolio_core/portfolio_core.dart' show Measure;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
@@ -23,6 +24,8 @@ class DevicePrefs {
   static const _sourcesKey = 'enabled_sources';
   static const _privacyKey = 'privacy_mode';
   static const _sortKey = 'holding_sort';
+  static const _evdsKey = 'evds_key';
+  static const _measureKey = 'measure';
 
   String get deviceId => _p.getString(_idKey)!;
 
@@ -43,6 +46,18 @@ class DevicePrefs {
       HoldingSort.name;
   Future<void> setHoldingSort(HoldingSort v) =>
       _ok(_p.setString(_sortKey, v.name));
+
+  /// Device-only; never logged, shown or written to the shared folder.
+  String? get evdsKey => _p.getString(_evdsKey);
+  Future<void> setEvdsKey(String? v) {
+    final t = v?.trim() ?? '';
+    return _ok(t.isEmpty ? _p.remove(_evdsKey) : _p.setString(_evdsKey, t));
+  }
+
+  Measure get measure =>
+      Measure.values.asNameMap()[_p.getString(_measureKey)] ??
+      Measure.tryNominal;
+  Future<void> setMeasure(Measure v) => _ok(_p.setString(_measureKey, v.name));
 
   // The plugin reports a failed write as false; callers must not carry on.
   Future<void> _ok(Future<bool> write) async {

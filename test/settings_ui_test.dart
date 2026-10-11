@@ -30,17 +30,20 @@ void main() {
   late MemoryRecordFolder folder;
   late AppController c;
   final hosts = <String>[];
+  Future<http.Response> Function(http.Request)? handler;
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
     tmp = Directory.systemTemp.createTempSync('setui');
     folder = MemoryRecordFolder();
     hosts.clear();
+    handler = null;
   });
   tearDown(() => tmp.deleteSync(recursive: true));
 
   Future<http.Response> net(http.Request r) async {
     hosts.add(r.url.host);
+    if (handler != null) return handler!(r);
     // Canned failure: proves the request went out via the allowed host only.
     return http.Response('{}', 500);
   }
@@ -86,7 +89,7 @@ void main() {
           s.title is Text &&
           (s.title as Text).data != 'Hide amounts by default',
     );
-    expect(sources.length, 7);
+    expect(sources.length, 9);
     expect(sources.every((s) => !s.value), isTrue);
     expect(
       find.text(
@@ -257,7 +260,11 @@ void main() {
         reason: bad,
       );
       expect(
-        t.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        t
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'Save price'),
+            )
+            .onPressed,
         isNull,
       );
     }
@@ -348,5 +355,81 @@ void main() {
     await ctl.openFolder(b2, 'bad2');
     expect(ctl.scan!.complete, isFalse);
     expect(ctl.lastValidScan, isNull);
+  });
+
+  testWidgets('inflation sources say they send nothing about holdings', (
+    t,
+  ) async {
+    await boot(t);
+    expect(
+      find.text(
+        'Sends: nothing about your holdings. Contacts: www.tcmb.gov.tr.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Sends: nothing about your holdings'),
+      findsNWidgets(2),
+    );
+  });
+
+  testWidgets('evds key field is obscured and saved trimmed', (t) async {
+    await boot(t);
+    final f = find.byKey(const Key('evdsKey'));
+    await t.ensureVisible(f);
+    await t.enterText(f, '  abc  ');
+    await t.testTextInput.receiveAction(TextInputAction.done);
+    await t.pump();
+    expect(c.prefs.evdsKey, 'abc');
+    expect(
+      t
+          .widget<EditableText>(
+            find.descendant(of: f, matching: find.byType(EditableText)),
+          )
+          .obscureText,
+      isTrue,
+    );
+  });
+
+  testWidgets('evds status shows the rejected key', (t) async {
+    handler = (_) async => http.Response('no', 401);
+    await boot(t, seed: () => c.prefs.setEvdsKey('k'));
+    await t.tap(find.widgetWithText(SwitchListTile, 'TCMB EVDS (inflation)'));
+    await settle(t);
+    expect(
+      find.textContaining('Last error: EVDS rejected the key'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('k\n'), findsNothing);
+  });
+
+  testWidgets('add a manual month', (t) async {
+    await boot(t);
+    await t.ensureVisible(find.byKey(const Key('cpiMonth')));
+    await t.enterText(find.byKey(const Key('cpiMonth')), '2026-09');
+    await t.enterText(find.byKey(const Key('cpiPercent')), '1,84');
+    await t.pump();
+    await t.tap(find.text('Add month'));
+    await settle(t);
+    expect(find.text('2026-09  +1.84%  (manual)'), findsOneWidget);
+    expect(c.prices.cpi.months['2026-09']!.source, 'manual');
+    await t.tap(find.byTooltip('Delete manual month'));
+    await settle(t);
+    expect(find.text('2026-09  +1.84%  (manual)'), findsNothing);
+  });
+
+  testWidgets('invalid month shows the error', (t) async {
+    await boot(t);
+    await t.ensureVisible(find.byKey(const Key('cpiMonth')));
+    await t.enterText(find.byKey(const Key('cpiMonth')), '2027-01');
+    await t.enterText(find.byKey(const Key('cpiPercent')), '1,84');
+    await t.pump();
+    expect(find.text('Month is in the future'), findsOneWidget);
+    expect(
+      t
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Add month'))
+          .onPressed,
+      isNull,
+    );
   });
 }

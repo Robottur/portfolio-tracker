@@ -234,7 +234,7 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     gate.complete();
     await Future.wait([a, b]);
-    expect(calls, 1);
+    expect(calls, 2); // the holding and USD/TRY, in one run
   });
 
   testWidgets('the home screen refreshes prices every 5 minutes', (t) async {
@@ -254,7 +254,7 @@ void main() {
       () => Future<void>.delayed(const Duration(milliseconds: 20)),
     );
     await t.pump();
-    expect(calls, 1);
+    expect(calls, 2); // the holding and USD/TRY
     await t.pumpWidget(const SizedBox());
   });
 
@@ -425,6 +425,129 @@ void main() {
       );
       expect(calls, 0);
     });
+  });
+
+  group('measures and inflation wiring', () {
+    final t0 = DateTime.utc(2026, 10, 1);
+    Future<AppController> withTx(
+      Set<String> on,
+      Future<http.Response> Function(http.Request) h,
+    ) async {
+      final prefs = await DevicePrefs.load();
+      await prefs.setEnabledSources(on);
+      final c = AppController(
+        prefs: prefs,
+        privateDir: tmp,
+        network: MockClient(h),
+        nowUtc: () => DateTime.utc(2026, 10, 10, 12),
+      );
+      await c.openFolder(MemoryRecordFolder(), 'mem', createName: 'Main');
+      await c.addTransaction(
+        Transaction.buy(
+          instrument: Instrument.create(AssetClass.bistShare, 'AAA'),
+          date: t0,
+          dayOrder: 10,
+          quantity: Decimal.one,
+          unitPrice: Decimal.one,
+          fees: Decimal.zero,
+        ),
+      );
+      return c;
+    }
+
+    test('get price falls back to binance for a coin btcturk lacks', () async {
+      final bnb = Instrument.create(AssetClass.crypto, 'BNB');
+      final c = await withTx({'btcturk', 'binance'}, (r) async {
+        if (r.url.host == 'api.btcturk.com') {
+          return http.Response(
+            '{"success":true,"data":[]}',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+        return http.Response(
+          '{"symbol":"BNBTRY","price":"700"}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final o = await c.fetchPriceFor(bnb, c.today);
+      expect(o!.price, Decimal.parse('700'));
+      expect(o.source, 'binance');
+    });
+
+    test('no fallback when binance is off', () async {
+      final hosts = <String>[];
+      final c = await withTx({'btcturk'}, (r) async {
+        hosts.add(r.url.host);
+        return http.Response(
+          '{"success":true,"data":[]}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      await expectLater(
+        c.fetchPriceFor(Instrument.create(AssetClass.crypto, 'BNB'), c.today),
+        throwsA(anything),
+      );
+      expect(hosts.toSet(), {'api.btcturk.com'});
+    });
+
+    test('only binance enabled: consent names binance', () async {
+      final c = await withTx({'binance'}, (_) async => http.Response('', 500));
+      expect(c.priceSourceFor(AssetClass.crypto, c.today).id, 'binance');
+    });
+
+    test('refresh asks for FX:USD history on transaction dates', () async {
+      final urls = <String>[];
+      final c = await withTx({'yahoo'}, (r) async {
+        urls.add(r.url.toString());
+        return http.Response('{}', 500);
+      });
+      await c.refreshPrices(manual: true);
+      expect(urls.any((u) => u.contains('USDTRY')), isTrue);
+    });
+
+    test('inflation refresh runs with only an inflation source', () async {
+      final hosts = <String>[];
+      final c = await withTx({'tcmbcpi'}, (r) async {
+        hosts.add(r.url.host);
+        return http.Response('x', 500);
+      });
+      await c.refreshPrices(manual: true);
+      expect(hosts, ['www.tcmb.gov.tr']);
+    });
+
+    test('measureUnavailable', () async {
+      final c = await withTx({}, (_) async => http.Response('', 500));
+      expect(c.measureUnavailable(Measure.tryNominal), isNull);
+      expect(
+        c.measureUnavailable(Measure.usd),
+        'Enable a currency source for USD returns',
+      );
+      expect(
+        c.measureUnavailable(Measure.real),
+        'Add inflation data in Settings',
+      );
+      expect(c.ratesFor(Measure.tryNominal), isNull);
+      expect(c.holdingsIn(Measure.usd), isNull);
+      expect(c.holdingsIn(Measure.tryNominal), isNotNull);
+      await c.setManualCpi('2026-09', Decimal.parse('2'));
+      expect(c.measureUnavailable(Measure.real), isNull);
+    });
+
+    test(
+      'measure preference persists; key is trimmed, empty removes',
+      () async {
+        final c = await withTx({}, (_) async => http.Response('', 500));
+        await c.setMeasure(Measure.usd);
+        expect(c.prefs.measure, Measure.usd);
+        await c.setEvdsKey('  k ');
+        expect(c.prefs.evdsKey, 'k');
+        await c.setEvdsKey('  ');
+        expect(c.prefs.evdsKey, isNull);
+      },
+    );
   });
 }
 
