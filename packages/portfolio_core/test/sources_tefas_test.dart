@@ -142,9 +142,13 @@ void main() {
   test('a 40-day window is two requests', () async {
     final s = make((_) => _fx('tefas_tte_yat.json'));
     await s.closes(tte, date(2026, 9, 1), date(2026, 10, 10));
-    expect(reqs, hasLength(2));
-    final first = jsonDecode(reqs.first.body) as Map;
-    expect(first['bitTarih'], '20261010');
+    expect(
+      [
+        for (final q in reqs)
+          '${jsonDecode(q.body)['basTarih']}-${jsonDecode(q.body)['bitTarih']}',
+      ],
+      ['20260912-20261010', '20260901-20260911'],
+    );
   });
 
   test('latest takes the newest row from a 10-day window', () async {
@@ -172,5 +176,57 @@ void main() {
       s.closes(tte, date(2026, 10, 1), date(2026, 10, 9)),
       throwsA(isA<ConsentDeniedException>()),
     );
+  });
+
+  test('a 429 on the first fund stops latest at once', () async {
+    reqs = [];
+    final s = TefasSource(
+      MockClient((r) async {
+        reqs.add(r);
+        return http.Response('', 429, headers: {'retry-after': '60'});
+      }),
+      nowUtc: () => testNow,
+    );
+    await expectLater(
+      s.latest([tte, Instrument.create(AssetClass.fund, 'AFT')]),
+      throwsA(
+        isA<SourceException>().having(
+          (e) => e.retryAfter,
+          'retryAfter',
+          const Duration(seconds: 60),
+        ),
+      ),
+    );
+    expect(reqs, hasLength(1));
+  });
+
+  test('errorMessage with an empty list is an error, one request', () async {
+    final s = make((_) => '{"resultList":[],"errorMessage":"boom"}');
+    await expectLater(
+      s.closes(tte, date(2026, 10, 1), date(2026, 10, 9)),
+      throwsA(
+        isA<SourceException>().having(
+          (e) => e.message,
+          'message',
+          'TEFAS error',
+        ),
+      ),
+    );
+    expect(reqs, hasLength(1));
+  });
+
+  test('rows for another fund do not remember the kind', () async {
+    final remembered = <String>[];
+    final s = make(
+      (_) => _fx('tefas_tte_yat.json'),
+      rememberKind: (c, k) async => remembered.add(k),
+    );
+    final r = await s.closes(
+      Instrument.create(AssetClass.fund, 'AFT'),
+      date(2026, 10, 1),
+      date(2026, 10, 9),
+    );
+    expect(r, isEmpty);
+    expect(remembered, isEmpty);
   });
 }

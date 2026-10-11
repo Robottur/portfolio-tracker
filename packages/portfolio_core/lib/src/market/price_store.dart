@@ -43,7 +43,10 @@ class PriceStore implements PriceLookup {
     await _readFundKinds();
   }
 
-  String? fundKind(String code) => _fundKinds[code];
+  String? fundKind(String code) {
+    final k = _fundKinds[code];
+    return const ['YAT', 'EMK', 'BYF'].contains(k) ? k : null;
+  }
 
   Future<void> setFundKind(String code, String kind) {
     _fundKinds[code] = kind;

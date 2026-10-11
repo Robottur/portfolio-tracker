@@ -250,4 +250,13 @@ void main() {
     await bad.load();
     expect(bad.fundKind('TTE'), isNull);
   });
+
+  test('an unknown stored fund kind is ignored', () async {
+    await blobs.put(
+      'fund_kinds',
+      Uint8List.fromList(utf8.encode('{"TTE":"XYZ"}')),
+    );
+    await store.load();
+    expect(store.fundKind('TTE'), isNull);
+  });
 }

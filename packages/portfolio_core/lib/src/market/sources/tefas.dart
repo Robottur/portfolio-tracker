@@ -71,13 +71,16 @@ class TefasSource implements PriceSource {
       );
       if (json is! Map) throw SourceException(id, 'Unexpected response');
       final rows = json['resultList'];
-      if (rows is List && rows.isNotEmpty) {
-        if (guessed) await rememberKind?.call(code, kind);
-        return (_parse(code, rows, from, to), kind);
-      }
       final msg = json['errorMessage'];
-      if (rows == null && msg is String && !_emptyMsg.hasMatch(msg)) {
+      if (msg != null && !(msg is String && _emptyMsg.hasMatch(msg))) {
         throw SourceException(id, 'TEFAS error'); // never echo server text
+      }
+      if (rows is List && rows.isNotEmpty) {
+        final parsed = _parse(code, rows, from, to);
+        if (guessed && rows.any((r) => r is Map && r['fonKodu'] == code)) {
+          await rememberKind?.call(code, kind);
+        }
+        return (parsed, kind);
       }
     }
     return (const <PriceObservation>[], null);
@@ -139,6 +142,9 @@ class TefasSource implements PriceSource {
           );
         }
       } on SourceException catch (e) {
+        if (e.retryAfter != null) {
+          rethrow; // back off; do not hit the limit again
+        }
         failure = e;
         failed++;
       }
