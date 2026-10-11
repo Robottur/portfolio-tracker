@@ -379,8 +379,12 @@ class AppController extends ChangeNotifier {
           ? const {}
           : {
               for (final t in txs) t.effectiveDate,
+              // Baselines before the first transaction are clamped to it.
               for (final p in Period.values)
-                if (p != Period.lifetime) baselineFor(p, today, _calendar),
+                if (p != Period.lifetime)
+                  if (baselineFor(p, today, _calendar) case final b
+                      when !b.isBefore(first.subtract(const Duration(days: 1))))
+                    b,
               first.subtract(const Duration(days: 1)),
             },
     );
@@ -423,10 +427,18 @@ class AppController extends ChangeNotifier {
     if (r == null) return (displayReplay, prices);
     if (measureUnavailable(m) != null) return null;
     try {
-      return (
-        replay(convertTransactions(displayTransactions, r), through: today),
-        convertPrices(prices, r),
+      final conv = convertPrices(prices, r);
+      final rep = replay(
+        convertTransactions(displayTransactions, r),
+        through: today,
       );
+      // Resolved now so nothing handed out can throw MissingRate later.
+      final latest = <String, PriceObservation?>{
+        for (final p in rep.positions.values)
+          if (p.quantity > Decimal.zero)
+            p.instrument.id: conv.latest(p.instrument.id),
+      };
+      return (rep, _Resolved(latest));
     } on MissingRate {
       return null;
     }
@@ -697,4 +709,16 @@ class AppController extends ChangeNotifier {
     await prefs.setHoldingSort(by);
     notifyListeners();
   }
+}
+
+class _Resolved implements PriceLookup {
+  _Resolved(this._latest);
+  final Map<String, PriceObservation?> _latest;
+
+  @override
+  PriceObservation? latest(String id) => _latest[id];
+
+  // The holdings views never read closes.
+  @override
+  PriceObservation? closeOnOrBefore(String id, DateTime date) => null;
 }

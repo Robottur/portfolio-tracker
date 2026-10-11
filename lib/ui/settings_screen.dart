@@ -378,7 +378,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ..sort((a, b) => b.key.compareTo(a.key))))
             ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Amount(
+              // CPI is public data: visible in privacy mode.
+              title: Text(
                 '${e.key}  ${e.value.percent >= Decimal.zero ? '+' : ''}'
                 '${formatPercent(e.value.percent)}  '
                 '(${_cpiSource[e.value.source] ?? e.value.source})',
@@ -424,10 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Align(
             alignment: Alignment.centerLeft,
             child: FilledButton(
-              onPressed:
-                  cpiReady && cpiError == null && !(scan?.readOnly ?? true)
-                  ? _addMonth
-                  : null,
+              onPressed: cpiReady && cpiError == null ? _addMonth : null,
               child: const Text('Add month'),
             ),
           ),

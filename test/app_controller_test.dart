@@ -498,14 +498,119 @@ void main() {
       expect(c.priceSourceFor(AssetClass.crypto, c.today).id, 'binance');
     });
 
-    test('refresh asks for FX:USD history on transaction dates', () async {
-      final urls = <String>[];
-      final c = await withTx({'yahoo'}, (r) async {
-        urls.add(r.url.toString());
-        return http.Response('{}', 500);
+    String fx(String f) =>
+        File('packages/portfolio_core/test/fixtures/$f').readAsStringSync();
+
+    Future<AppController> twoBuys(
+      Set<String> on,
+      Future<http.Response> Function(http.Request) h,
+    ) async {
+      final c = await withTx(on, h);
+      await c.addTransaction(
+        Transaction.buy(
+          instrument: Instrument.create(AssetClass.bistShare, 'AAA'),
+          date: DateTime.utc(2026, 10, 5), // Monday
+          dayOrder: 10,
+          quantity: Decimal.one,
+          unitPrice: Decimal.one,
+          fees: Decimal.zero,
+        ),
+      );
+      return c;
+    }
+
+    test('refresh asks TCMB for each transaction date', () async {
+      final paths = <String>[];
+      final c = await twoBuys({'tcmb'}, (r) async {
+        paths.add(r.url.path);
+        // Today's bulletin succeeds so TCMB is not backed off; dated ones 404.
+        return r.url.path == '/kurlar/today.xml'
+            ? http.Response.bytes(utf8.encode(fx('tcmb_09102026.xml')), 200)
+            : http.Response('', 404);
       });
       await c.refreshPrices(manual: true);
-      expect(urls.any((u) => u.contains('USDTRY')), isTrue);
+      expect(paths, contains('/kurlar/202610/01102026.xml'));
+      expect(paths, contains('/kurlar/202610/05102026.xml'));
+    });
+
+    test('refresh asks Yahoo for one USD history window', () async {
+      final reqs = <Uri>[];
+      final c = await twoBuys({'yahoo'}, (r) async {
+        reqs.add(r.url);
+        return r.url.path.contains('USDTRY')
+            ? http.Response(
+                fx(
+                  r.url.queryParameters.containsKey('period1')
+                      ? 'yahoo_usdtry_history.json'
+                      : 'yahoo_usdtry.json',
+                ),
+                200,
+                headers: {'content-type': 'application/json'},
+              )
+            : http.Response('{}', 500);
+      });
+      await c.refreshPrices(manual: true);
+      final h = reqs
+          .where(
+            (u) =>
+                u.path.contains('USDTRY') &&
+                u.queryParameters['period1'] != null,
+          )
+          .toList();
+      expect(h.length, 1);
+      int secs(DateTime d) => d.millisecondsSinceEpoch ~/ 1000;
+      // Window: day before the first buy (09-30), padded 10 days back, and
+      // 2026-10-09 (last weekday before "today" 10-10) as the latest baseline;
+      // Yahoo itself pads one day each side.
+      final from = DateTime.utc(2026, 9, 30).subtract(const Duration(days: 10));
+      final to = DateTime.utc(2026, 10, 9);
+      expect(
+        h.single.queryParameters['period1'],
+        '${secs(from.subtract(const Duration(days: 1)))}',
+      );
+      expect(
+        h.single.queryParameters['period2'],
+        '${secs(to.add(const Duration(days: 1)))}',
+      );
+    });
+
+    PriceObservation obs(String id, String day, String price, PriceKind k) =>
+        PriceObservation(
+          instrumentId: id,
+          price: Decimal.parse(price),
+          sessionDate: DateTime.parse(day),
+          quoteTime: null,
+          receivedAt: DateTime.utc(2026, 10, 10),
+          source: 'test',
+          kind: k,
+        );
+
+    test('holdingsIn resolves latest eagerly and never throws later', () async {
+      final c = await withTx({'yahoo'}, (_) async => http.Response('', 500));
+      expect(c.holdingsIn(Measure.usd), isNull); // no USD/TRY at all
+      await c.prices.addFetched([
+        obs('FX:USD', '2026-10-01', '40', PriceKind.close),
+        obs('XIST:AAA', '2026-10-09', '20', PriceKind.close),
+      ]);
+      final (_, lookup) = c.holdingsIn(Measure.usd)!;
+      expect(lookup.latest('XIST:AAA')!.price, Decimal.parse('0.5'));
+      expect(lookup.closeOnOrBefore('XIST:AAA', c.today), isNull);
+    });
+
+    test('get price falls back when btcturk fails outright', () async {
+      final c = await withTx({'btcturk', 'binance'}, (r) async {
+        if (r.url.host == 'api.btcturk.com') return http.Response('', 500);
+        return http.Response(
+          '{"symbol":"BNBTRY","price":"700"}',
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      });
+      final o = await c.fetchPriceFor(
+        Instrument.create(AssetClass.crypto, 'BNB'),
+        c.today,
+      );
+      expect(o!.price, Decimal.parse('700'));
     });
 
     test('inflation refresh runs with only an inflation source', () async {

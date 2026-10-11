@@ -418,6 +418,18 @@ void main() {
     expect(find.text('2026-09  +1.84%  (manual)'), findsNothing);
   });
 
+  testWidgets('inflation rows stay visible in privacy mode', (t) async {
+    await boot(
+      t,
+      seed: () async {
+        await c.setPrivacy(true);
+        await c.setManualCpi('2026-09', Decimal.parse('1.84'));
+      },
+    );
+    await t.ensureVisible(find.byKey(const Key('cpiMonth')));
+    expect(find.text('2026-09  +1.84%  (manual)'), findsOneWidget);
+  });
+
   testWidgets('invalid month shows the error', (t) async {
     await boot(t);
     await t.ensureVisible(find.byKey(const Key('cpiMonth')));
