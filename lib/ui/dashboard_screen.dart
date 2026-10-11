@@ -4,6 +4,7 @@ import 'package:portfolio_core/portfolio_core.dart';
 import '../app/app_controller.dart';
 import 'asset_labels.dart';
 import 'holding_screen.dart';
+import 'gain_colors.dart';
 import 'privacy.dart';
 import 'status_banner.dart';
 
@@ -116,10 +117,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
           else if (r.unavailableReason != null)
             Text('Gain unavailable: ${r.unavailableReason}')
           else ...[
-            if (r.gain != null) Amount(signedTry(r.gain!), style: big),
+            if (r.gain != null)
+              Amount(
+                signedTry(r.gain!),
+                style: gainStyle(context, r.gain!, big),
+              ),
             const Text('Return % — Modified Dietz estimate'),
             if (r.returnPercent != null)
-              Amount(signedPercent(r.returnPercent!))
+              Amount(
+                signedPercent(r.returnPercent!),
+                style: gainStyle(context, r.returnPercent!),
+              )
             else if (r.percentNote != null)
               Text(r.percentNote!),
           ],

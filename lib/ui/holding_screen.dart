@@ -4,6 +4,7 @@ import 'package:portfolio_core/portfolio_core.dart';
 
 import '../app/app_controller.dart';
 import 'asset_labels.dart';
+import 'gain_colors.dart';
 import 'privacy.dart';
 import 'status_banner.dart';
 
@@ -63,7 +64,10 @@ class HoldingTile extends StatelessWidget {
           else
             Amount('${formatTry(entry.value!)} TRY'),
           if (entry.unrealized != null && !entry.closed)
-            Amount(signedTry(entry.unrealized!)),
+            Amount(
+              signedTry(entry.unrealized!),
+              style: gainStyle(context, entry.unrealized!),
+            ),
         ],
       ),
       onTap: onTap,
@@ -234,12 +238,27 @@ class HoldingDetail extends StatelessWidget {
               'Unrealized gain',
               e.unrealized == null
                   ? const Text('Unavailable')
-                  : Amount(signedTry(e.unrealized!)),
+                  : Amount(
+                      signedTry(e.unrealized!),
+                      style: gainStyle(context, e.unrealized!),
+                    ),
             ),
             if (e.unrealizedPercent != null)
-              _row('Unrealized %', Amount(signedPercent(e.unrealizedPercent!))),
+              _row(
+                'Unrealized %',
+                Amount(
+                  signedPercent(e.unrealizedPercent!),
+                  style: gainStyle(context, e.unrealizedPercent!),
+                ),
+              ),
           ],
-          _row('Realized gain', Amount(signedTry(p.realized))),
+          _row(
+            'Realized gain',
+            Amount(
+              signedTry(p.realized),
+              style: gainStyle(context, p.realized),
+            ),
+          ),
           _row('Net dividends', Amount(signedTry(p.dividends))),
           const Divider(),
           Text('History', style: Theme.of(context).textTheme.titleMedium),
