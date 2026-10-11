@@ -207,7 +207,10 @@ void main() {
   testWidgets('comparison line with TRY unavailable', (tester) async {
     await boot(tester, price: null);
     await lifetime(tester);
-    expect(find.textContaining('TRY: '), findsWidgets);
+    expect(
+      find.textContaining('TRY: Missing price for XIST:AAA'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('sort control: one keyboard stop, one semantics node', (
@@ -216,22 +219,31 @@ void main() {
     final sem = tester.ensureSemantics();
     await boot(tester);
     expect(find.bySemanticsLabel(RegExp('Sort: Name')), findsOneWidget);
-    var focused = false;
-    for (var i = 0; i < 40 && !focused; i++) {
+    // Tab through the whole screen; count distinct stops holding the sort label.
+    final seen = <FocusNode>[];
+    final sortStops = <FocusNode>{};
+    for (var i = 0; i < 80; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
       await tester.pump();
-      final ctx = FocusManager.instance.primaryFocus?.context;
-      focused =
-          ctx != null &&
-          find
-              .descendant(
-                of: find.byElementPredicate((e) => e == ctx),
-                matching: find.textContaining('Sort:'),
-              )
-              .evaluate()
-              .isNotEmpty;
+      final node = FocusManager.instance.primaryFocus;
+      final ctx = node?.context;
+      if (node == null || ctx == null) continue;
+      if (seen.contains(node)) break; // wrapped around
+      seen.add(node);
+      if (find
+          .descendant(
+            of: find.byElementPredicate((e) => e == ctx),
+            matching: find.textContaining('Sort:'),
+          )
+          .evaluate()
+          .isNotEmpty) {
+        sortStops.add(node);
+      }
     }
-    expect(focused, isTrue);
+    expect(sortStops.length, 1);
+    // Focus the single stop again and open the menu from the keyboard.
+    sortStops.single.requestFocus();
+    await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
     expect(find.text('Value'), findsOneWidget);
