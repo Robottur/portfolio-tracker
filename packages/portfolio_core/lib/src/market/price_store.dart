@@ -6,6 +6,7 @@ import 'package:decimal/decimal.dart';
 import '../dates.dart';
 import '../storage/blob_store.dart';
 import '../strict_json.dart';
+import 'cpi.dart';
 import 'price.dart';
 
 class PriceStore implements PriceLookup {
@@ -15,6 +16,8 @@ class PriceStore implements PriceLookup {
   final Map<String, PriceObservation> _fetched = {};
   final Map<String, PriceObservation> _manual = {};
   final Map<String, String> _fundKinds = {};
+  // source -> month -> percent text
+  final Map<String, Map<String, Decimal>> _cpi = {};
 
   static String _fetchedKey(PriceObservation o) =>
       '${o.instrumentId}|${isoDate(o.sessionDate)}|${o.kind.name}';
@@ -35,12 +38,78 @@ class PriceStore implements PriceLookup {
     _fetched.clear();
     _manual.clear();
     _fundKinds.clear();
+    _cpi.clear();
     await _read('prices', (o) => _fetched[_fetchedKey(o)] = o);
     await _read(
       'manual',
       (o) => _manual[_manualKey(o.instrumentId, o.sessionDate)] = o,
     );
     await _readFundKinds();
+    await _readCpi();
+  }
+
+  static const _cpiSources = ['evds', 'tcmb', 'manual'];
+
+  /// Precedence: evds, then tcmb, then manual.
+  CpiSeries get cpi {
+    final out = <String, CpiEntry>{};
+    for (final src in _cpiSources.reversed) {
+      for (final e in (_cpi[src] ?? const <String, Decimal>{}).entries) {
+        out[e.key] = CpiEntry(e.value, src);
+      }
+    }
+    return CpiSeries(out);
+  }
+
+  Future<void> setCpi(Map<String, Decimal> months, String source) {
+    _cpi[source] = Map.of(months);
+    return _writeCpi();
+  }
+
+  Future<void> setManualCpi(String month, Decimal percent) {
+    (_cpi['manual'] ??= {})[month] = percent;
+    return _writeCpi();
+  }
+
+  Future<void> removeManualCpi(String month) async {
+    if (_cpi['manual']?.remove(month) != null) await _writeCpi();
+  }
+
+  Future<void> _writeCpi() => _store.put(
+    'cpi',
+    Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          for (final s in _cpi.entries)
+            s.key: {for (final m in s.value.entries) m.key: m.value.toString()},
+        }),
+      ),
+    ),
+  );
+
+  Future<void> _readCpi() async {
+    final bytes = await _store.get('cpi');
+    if (bytes == null) return;
+    try {
+      final m = decodeStrictJson(utf8.decode(bytes));
+      if (m is! Map) return;
+      for (final src in _cpiSources) {
+        final months = m[src];
+        if (months is! Map) continue;
+        for (final e in months.entries) {
+          final p = e.value is String
+              ? Decimal.tryParse(e.value as String)
+              : null;
+          if (e.key is String &&
+              RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(e.key as String) &&
+              p != null) {
+            (_cpi[src] ??= {})[e.key as String] = p;
+          }
+        }
+      }
+    } on FormatException {
+      return;
+    }
   }
 
   String? fundKind(String code) {

@@ -10,6 +10,7 @@ export 'src/decimal_util.dart';
 export 'src/ledger/issue.dart';
 export 'src/ledger/reconcile.dart';
 export 'src/market/consent_client.dart';
+export 'src/market/cpi.dart';
 export 'src/market/price.dart';
 export 'src/market/price_store.dart';
 export 'src/market/refresh.dart';
