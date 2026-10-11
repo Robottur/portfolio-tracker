@@ -151,6 +151,9 @@ void main() {
     expect((await styleFor(tester, '1', dark: true))?.color, _darkGain);
     expect((await styleFor(tester, '-1', dark: true))?.color, _darkLoss);
     expect(await styleFor(tester, '0'), isNull);
+    // Displays as 0.00, so no colour.
+    expect(await styleFor(tester, '0.004'), isNull);
+    expect(await styleFor(tester, '-0.004'), isNull);
     expect(await styleFor(tester, '-1', masked: true), isNull);
   });
 }
