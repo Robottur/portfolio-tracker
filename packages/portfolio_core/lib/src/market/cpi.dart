@@ -26,24 +26,36 @@ class CpiEntry {
 class CpiSeries {
   CpiSeries(this.months)
     : latestMonth = months.isEmpty ? null : (months.keys.toList()..sort()).last,
-      _first = months.isEmpty ? null : (months.keys.toList()..sort()).first;
+      _first = months.isEmpty ? null : (months.keys.toList()..sort()).first {
+    final first = _first;
+    if (first == null) return;
+    // Level is 1 in the month before the earliest month; the chain stops at a gap.
+    var level = Decimal.one;
+    _levels[_shift(first, -1)] = level;
+    for (var m = first; m.compareTo(latestMonth!) <= 0; m = _shift(m, 1)) {
+      final e = months[m];
+      if (e == null) break;
+      level = roundHalfEven(
+        level * (Decimal.one + divide(e.percent, Decimal.fromInt(100))),
+        28,
+      );
+      _levels[m] = level;
+    }
+  }
 
   final Map<String, CpiEntry> months;
   final String? latestMonth;
   final String? _first;
+  final Map<String, Decimal> _levels = {};
 
-  /// Level is 1 in the month before the earliest month; null before that and after a gap.
+  /// True when any month comes from the 2-decimal TCMB page.
+  bool get hasEstimates => months.values.any((e) => e.source == 'tcmb');
+
+  /// Null before the month preceding the first entry and after a gap; carries forward after latestMonth.
   Decimal? index(String month) {
-    final first = _first;
-    if (first == null || month.compareTo(_shift(first, -1)) < 0) return null;
-    var level = Decimal.one;
-    for (var m = first; m.compareTo(month) <= 0; m = _shift(m, 1)) {
-      if (m.compareTo(latestMonth!) > 0) break;
-      final e = months[m];
-      if (e == null) return null;
-      level *= Decimal.one + divide(e.percent, Decimal.fromInt(100));
-    }
-    return level;
+    final latest = latestMonth;
+    if (latest == null) return null;
+    return _levels[month.compareTo(latest) > 0 ? latest : month];
   }
 
   /// Fraction, e.g. 0.21 for +21%.

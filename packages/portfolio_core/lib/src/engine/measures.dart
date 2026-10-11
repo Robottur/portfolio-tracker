@@ -34,8 +34,14 @@ class UsdRates implements Rates {
   static Decimal? _inv(PriceObservation? o) =>
       o == null ? null : divide(Decimal.one, o.price);
 
+  // The refresh fetches a 10-day window; an older close is a stale rate.
   @override
-  Decimal? at(DateTime day) => _inv(_prices.closeOnOrBefore('FX:USD', day));
+  Decimal? at(DateTime day) {
+    final o = _prices.closeOnOrBefore('FX:USD', day);
+    return o == null || day.difference(o.sessionDate).inDays > 10
+        ? null
+        : _inv(o);
+  }
 
   @override
   Decimal? get current => _inv(_prices.latest('FX:USD'));

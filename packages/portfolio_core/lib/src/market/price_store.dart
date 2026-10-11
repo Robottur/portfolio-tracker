@@ -39,6 +39,7 @@ class PriceStore implements PriceLookup {
     _manual.clear();
     _fundKinds.clear();
     _cpi.clear();
+    _cpiSeries = null;
     await _read('prices', (o) => _fetched[_fetchedKey(o)] = o);
     await _read(
       'manual',
@@ -46,12 +47,16 @@ class PriceStore implements PriceLookup {
     );
     await _readFundKinds();
     await _readCpi();
+    _cpiSeries = null;
   }
 
   static const _cpiSources = ['evds', 'tcmb', 'manual'];
 
   /// Precedence: evds, then tcmb, then manual.
-  CpiSeries get cpi {
+  CpiSeries get cpi => _cpiSeries ??= _buildCpi();
+  CpiSeries? _cpiSeries; // reset wherever _cpi changes
+
+  CpiSeries _buildCpi() {
     final out = <String, CpiEntry>{};
     for (final src in _cpiSources.reversed) {
       for (final e in (_cpi[src] ?? const <String, Decimal>{}).entries) {
@@ -69,6 +74,7 @@ class PriceStore implements PriceLookup {
       throw ArgumentError.value(months, 'months', 'percent must be above -100');
     }
     _cpi[source] = Map.of(months);
+    _cpiSeries = null;
     return _writeCpi();
   }
 
@@ -77,11 +83,15 @@ class PriceStore implements PriceLookup {
       throw ArgumentError.value(percent, 'percent');
     }
     (_cpi['manual'] ??= {})[month] = percent;
+    _cpiSeries = null;
     return _writeCpi();
   }
 
   Future<void> removeManualCpi(String month) async {
-    if (_cpi['manual']?.remove(month) != null) await _writeCpi();
+    if (_cpi['manual']?.remove(month) != null) {
+      _cpiSeries = null;
+      await _writeCpi();
+    }
   }
 
   Future<void> _writeCpi() => _store.put(

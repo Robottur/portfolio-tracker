@@ -15,6 +15,15 @@ void main() {
     store = PriceStore(blobs);
   });
 
+  test('cpi series is rebuilt after a change', () async {
+    await store.setManualCpi('2026-01', Decimal.fromInt(10));
+    expect(store.cpi.index('2026-01'), Decimal.parse('1.1'));
+    await store.setManualCpi('2026-02', Decimal.fromInt(10));
+    expect(store.cpi.index('2026-02'), Decimal.parse('1.21'));
+    await store.removeManualCpi('2026-02');
+    expect(store.cpi.latestMonth, '2026-01');
+  });
+
   test('persists across a new store on the same blobs', () async {
     await store.addFetched([obs('XIST:AAA', '10.5', date(2026, 10, 9))]);
     await store.setManual(

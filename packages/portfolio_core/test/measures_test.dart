@@ -30,6 +30,22 @@ CpiSeries cpi(Map<String, String> m) => CpiSeries({
 });
 
 void main() {
+  test('real: 261 months of 28-digit percents convert fast', () {
+    final months = <String, String>{};
+    for (var i = 0; i < 261; i++) {
+      final n = 2005 * 12 + i;
+      months['${n ~/ 12}-${(n % 12 + 1).toString().padLeft(2, '0')}'] =
+          '1.2345678901234567890123456789';
+    }
+    final txs = [
+      for (var i = 0; i < 300; i++)
+        buy(on: DateTime.utc(2005 + (i % 20), 1 + i % 12, 5), dayOrder: i),
+    ];
+    final sw = Stopwatch()..start();
+    convertTransactions(txs, RealRates(cpi(months), today: today));
+    expect(sw.elapsedMilliseconds, lessThan(1000));
+  });
+
   test('usd: worked example', () {
     final prices = FixedPrices([
       obs('FX:USD', '30', day1),
@@ -76,6 +92,24 @@ void main() {
     expect(out[1].withholding, d('0.25'));
     expect(out[2].ratioNumerator, 2);
     expect(out[2].unitPrice, isNull);
+  });
+
+  test('usd: a rate older than 10 days is missing', () {
+    final buyDay = DateTime.utc(2026, 1, 20);
+    final txs = [buy(on: buyDay, qty: '1', price: '10')];
+    final stale = FixedPrices([
+      obs('FX:USD', '30', DateTime.utc(2026, 1, 1)),
+      obs('XIST:AAA', '15', today),
+      obs('FX:USD', '40', today),
+    ]);
+    final r = life(UsdRates(stale), txs, stale);
+    expect(r.unavailableReason, 'Missing USD/TRY rate for 2026-01-20');
+    final fresh = FixedPrices([
+      obs('FX:USD', '30', DateTime.utc(2026, 1, 12)),
+      obs('XIST:AAA', '15', today),
+      obs('FX:USD', '40', today),
+    ]);
+    expect(life(UsdRates(fresh), txs, fresh).unavailableReason, isNull);
   });
 
   test('measured Modified Dietz', () {
@@ -160,7 +194,7 @@ void main() {
   test('non-lifetime: baseline prices convert at the baseline rate', () {
     final prices = FixedPrices([
       obs('FX:USD', '30', day1),
-      obs('FX:USD', '32', DateTime.utc(2026, 1, 20)),
+      obs('FX:USD', '32', DateTime.utc(2026, 1, 30)),
       obs('XIST:AAA', '12', DateTime.utc(2026, 1, 30)),
       obs('XIST:AAA', '15', today),
       obs('FX:USD', '40', today),
