@@ -163,6 +163,24 @@ void main() {
       expect(requests, 7);
     });
 
+    test('an outage is one failure per refresh, not one per fund', () async {
+      var requests = 0;
+      final tefas = TefasSource(
+        MockClient((_) async {
+          requests++;
+          return http.Response('', 500);
+        }),
+        nowUtc: () => now,
+      );
+      final r = make(tefas);
+      await r.refresh(current: funds, history: {});
+      expect(requests, 1);
+      expect(
+        r.status['tefas']!.retryNotBefore,
+        now.add(const Duration(minutes: 1)),
+      );
+    });
+
     test('latest caches every row for later closes', () async {
       var requests = 0;
       final body = File('test/fixtures/tefas_tte_yat.json').readAsStringSync();

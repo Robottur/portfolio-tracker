@@ -172,18 +172,11 @@ class RefreshCoordinator {
         continue;
       }
       // One request per fund, stored at once: a rate limit part-way through
-      // must not discard the funds already fetched.
-      var limited = false;
+      // must not discard the funds already fetched. Any failure stops the rest
+      // (an unknown fund returns no rows, so a failure means TEFAS is limited
+      // or down) and counts once, like a batched call.
       for (final i in e.value) {
-        if (limited) break;
-        await call(s, () async {
-          try {
-            return await s.latest([i]);
-          } on SourceException catch (x) {
-            limited = x.retryAfter != null;
-            rethrow;
-          }
-        });
+        if (!await call(s, () => s.latest([i]))) break;
       }
     }
 
