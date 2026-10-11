@@ -162,11 +162,39 @@ class YahooSource implements PriceSource {
     return out;
   }
 
-  // Yahoo history is split-adjusted, so it must not feed cost-basis valuation.
+  // Share history is split-adjusted, so it must not feed cost-basis valuation;
+  // only FX closes (no splits) are served.
   @override
   Future<List<PriceObservation>> closes(
     Instrument instrument,
     DateTime from,
     DateTime to,
-  ) async => const [];
+  ) async {
+    if (instrument.assetClass != AssetClass.fx) return const [];
+    final h = yahooHistory(
+      await fetchYahooChart(
+        _c,
+        _symbol(instrument)!,
+        from: from,
+        to: to,
+        timeout: timeout,
+      ),
+      id,
+    );
+    final today = istanbulToday(_now());
+    return [
+      // Today's bar is still live, not a close.
+      for (final e in h.entries)
+        if (e.key.isBefore(today))
+          PriceObservation(
+            instrumentId: instrument.id,
+            price: e.value,
+            sessionDate: e.key,
+            quoteTime: null,
+            receivedAt: _now(),
+            source: id,
+            kind: PriceKind.close,
+          ),
+    ];
+  }
 }

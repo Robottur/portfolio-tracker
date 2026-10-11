@@ -59,9 +59,9 @@ class RefreshCoordinator {
     AssetClass.fund => 'tefas',
   };
 
-  static String closesSourceId(AssetClass c) => switch (c) {
+  static String closesSourceId(AssetClass c, Set<String> on) => switch (c) {
     AssetClass.bistShare => 'isyatirim',
-    AssetClass.fx => 'tcmb',
+    AssetClass.fx => on.contains('yahoo') ? 'yahoo' : 'tcmb',
     AssetClass.crypto => 'btcturk',
     AssetClass.gold => 'gold',
     AssetClass.fund => 'tefas',
@@ -103,6 +103,7 @@ class RefreshCoordinator {
     required List<Instrument> current,
     required Map<DateTime, List<Instrument>> history,
     bool manual = false,
+    Set<DateTime> usdDates = const {},
   }) async {
     final now = nowUtc();
     final last = _lastLatestStart;
@@ -180,7 +181,31 @@ class RefreshCoordinator {
       }
     }
 
-    for (final e in history.entries) {
+    // Yahoo serves USD/TRY as one range; TCMB per date, like any history need.
+    final fxId = closesSourceId(AssetClass.fx, on);
+    final usd = Instrument.create(AssetClass.fx, 'USD');
+    if (usdDates.isNotEmpty && fxId == 'yahoo') {
+      final s = usable(fxId);
+      final lo = usdDates.reduce((a, b) => a.isBefore(b) ? a : b);
+      final hi = usdDates.reduce((a, b) => a.isAfter(b) ? a : b);
+      final from = lo.subtract(const Duration(days: 10));
+      final covered = (_windows[usd.id] ?? const []).any(
+        (w) => !from.isBefore(w.$1) && !hi.isAfter(w.$2),
+      );
+      if (s != null &&
+          !covered &&
+          await call(s, () => s.closes(usd, from, hi))) {
+        _windows.putIfAbsent(usd.id, () => []).add((from, hi));
+      }
+    }
+    final needs = {...history};
+    if (fxId != 'yahoo') {
+      for (final d in usdDates) {
+        needs[d] = [...?needs[d], usd];
+      }
+    }
+
+    for (final e in needs.entries) {
       final day = e.key;
       for (final i in e.value) {
         // Only an exact-date close counts: an older one may hide newer sessions.
@@ -189,7 +214,7 @@ class RefreshCoordinator {
         if (windows.any((w) => !day.isBefore(w.$1) && !day.isAfter(w.$2))) {
           continue;
         }
-        final s = usable(closesSourceId(i.assetClass));
+        final s = usable(closesSourceId(i.assetClass, on));
         if (s == null) continue;
         final from = day.subtract(const Duration(days: 10));
         if (await call(s, () => s.closes(i, from, day))) {

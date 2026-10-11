@@ -274,7 +274,7 @@ class AppController extends ChangeNotifier {
   PriceSource priceSourceFor(AssetClass c, DateTime date) {
     final id = date == today
         ? RefreshCoordinator.latestSourceId(c, prefs.enabledSources)
-        : RefreshCoordinator.closesSourceId(c);
+        : RefreshCoordinator.closesSourceId(c, prefs.enabledSources);
     return _sources.firstWhere((s) => s.id == id);
   }
 

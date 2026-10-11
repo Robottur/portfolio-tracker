@@ -162,7 +162,40 @@ void main() {
       expect(s.latest([asels]), throwsA(isA<SourceException>()));
     });
 
-    test('closes is empty without a request', () async {
+    test('fx closes parse the history fixture', () async {
+      final log = <Uri>[];
+      final s = YahooSource(
+        routes({'USDTRY=X': () => json(fx('yahoo_usdtry_history.json'))}, log),
+        nowUtc: () => DateTime.utc(2026, 10, 12, 12),
+      );
+      final r = await s.closes(
+        usd,
+        DateTime.utc(2026, 9, 24),
+        DateTime.utc(2026, 10, 10),
+      );
+      expect(r, hasLength(13));
+      expect(r.first.sessionDate, DateTime.utc(2026, 9, 24));
+      expect(r.first.price, Decimal.parse('48.85089874267578'));
+      expect(r.last.price, Decimal.parse('49.2599983215332'));
+      expect(r.every((o) => o.kind == PriceKind.close), isTrue);
+      expect(log.single.queryParameters['interval'], '1d');
+      expect(log.single.queryParameters, contains('period1'));
+    });
+
+    test('fx closes leave out today (still a live bar)', () async {
+      final s = YahooSource(
+        routes({'USDTRY=X': () => json(fx('yahoo_usdtry_history.json'))}),
+        nowUtc: () => DateTime.utc(2026, 10, 11, 12),
+      );
+      final r = await s.closes(
+        usd,
+        DateTime.utc(2026, 9, 24),
+        DateTime.utc(2026, 10, 10),
+      );
+      expect(r, hasLength(12));
+    });
+
+    test('share closes stay empty', () async {
       final s = YahooSource(MockClient((_) => fail('network')), nowUtc: nowUtc);
       expect(
         await s.closes(

@@ -89,7 +89,12 @@ void main() {
 
   test('routing helpers', () {
     expect(RefreshCoordinator.latestSourceId(AssetClass.fund, {}), 'tefas');
-    expect(RefreshCoordinator.closesSourceId(AssetClass.fund), 'tefas');
+    expect(RefreshCoordinator.closesSourceId(AssetClass.fund, {}), 'tefas');
+    expect(
+      RefreshCoordinator.closesSourceId(AssetClass.fx, {'yahoo'}),
+      'yahoo',
+    );
+    expect(RefreshCoordinator.closesSourceId(AssetClass.fx, {'tcmb'}), 'tcmb');
     expect(RefreshCoordinator.latestSourceId(AssetClass.fx, {'tcmb'}), 'tcmb');
     expect(
       RefreshCoordinator.latestSourceId(AssetClass.fx, {'yahoo'}),
@@ -251,18 +256,23 @@ void main() {
     },
   );
 
-  test('history routes bist to isyatirim and fx to tcmb', () async {
-    enabled = {'isyatirim', 'tcmb', 'yahoo'};
-    await rc.refresh(
-      current: [],
-      history: {
-        date(2026, 10, 9): [bist, usd],
-      },
-    );
-    expect(src['isyatirim']!.calls, ['closes:XIST:AAA:2026-09-29:2026-10-09']);
-    expect(src['tcmb']!.calls, ['closes:FX:USD:2026-09-29:2026-10-09']);
-    expect(src['yahoo']!.calls, isEmpty);
-  });
+  test(
+    'history routes bist to isyatirim and fx to yahoo when enabled',
+    () async {
+      enabled = {'isyatirim', 'tcmb', 'yahoo'};
+      await rc.refresh(
+        current: [],
+        history: {
+          date(2026, 10, 9): [bist, usd],
+        },
+      );
+      expect(src['isyatirim']!.calls, [
+        'closes:XIST:AAA:2026-09-29:2026-10-09',
+      ]);
+      expect(src['yahoo']!.calls, ['closes:FX:USD:2026-09-29:2026-10-09']);
+      expect(src['tcmb']!.calls, isEmpty);
+    },
+  );
 
   test('second refresh within 5 minutes is skipped unless manual', () async {
     enabled = {'btcturk'};
@@ -526,5 +536,27 @@ void main() {
       );
       expect(src.calls, isEmpty);
     });
+  });
+
+  test('usd dates with yahoo make one range request', () async {
+    enabled = {'yahoo'};
+    final dates = {date(2026, 1, 5), date(2026, 3, 2)};
+    await rc.refresh(current: [], history: {}, usdDates: dates);
+    expect(src['yahoo']!.calls, ['closes:FX:USD:2025-12-26:2026-03-02']);
+    await rc.refresh(current: [], history: {}, usdDates: dates, manual: true);
+    expect(src['yahoo']!.calls, hasLength(1));
+  });
+
+  test('usd dates with tcmb make one request per date', () async {
+    enabled = {'tcmb'};
+    await rc.refresh(
+      current: [],
+      history: {},
+      usdDates: {date(2026, 1, 5), date(2026, 3, 2)},
+    );
+    expect(src['tcmb']!.calls, [
+      'closes:FX:USD:2025-12-26:2026-01-05',
+      'closes:FX:USD:2026-02-20:2026-03-02',
+    ]);
   });
 }
