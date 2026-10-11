@@ -61,6 +61,7 @@ class AppController extends ChangeNotifier {
   Future<void> _tail = Future.value();
   Future<void>? _resuming;
   Future<void>? _refreshing;
+  Future<void>? _priceTail;
   bool _reopenFailed = false;
 
   ScanResult? scan;
@@ -256,8 +257,57 @@ class AppController extends ChangeNotifier {
   /// A call while one runs (manual or not) waits for that run: concurrent
   /// runs would race on the price cache file.
   Future<void> refreshPrices({bool manual = false}) =>
-      _refreshing ??= _refreshPrices(manual)
+      _refreshing ??= _pricesSerial(() => _refreshPrices(manual))
           .whenComplete(() => _refreshing = null);
+
+  // Refreshes and single fetches write the same cache file, so they queue.
+  Future<T> _pricesSerial<T>(Future<T> Function() f) {
+    final r = _priceTail?.then((_) => f()) ?? f();
+    _priceTail = r.then<void>((_) {}, onError: (_) {});
+    return r;
+  }
+
+  /// The source that would answer for [c] on [date], enabled or not.
+  PriceSource priceSourceFor(AssetClass c, DateTime date) {
+    final id = date == today
+        ? RefreshCoordinator.latestSourceId(c, prefs.enabledSources)
+        : RefreshCoordinator.closesSourceId(c);
+    return _sources.firstWhere((s) => s.id == id);
+  }
+
+  /// The price for [inst] on [date]: the latest quote for today, otherwise the
+  /// last close on or before [date] within 10 days. Null when there is none.
+  Future<PriceObservation?> fetchPriceFor(
+    Instrument inst,
+    DateTime date,
+  ) => _pricesSerial(() async {
+    final src = priceSourceFor(inst.assetClass, date);
+    // Checked here, not when queued: the user may have switched it off since.
+    if (!prefs.enabledSources.contains(src.id)) {
+      throw StateError('Source is disabled');
+    }
+    final List<PriceObservation> got;
+    PriceObservation? pick;
+    if (date == today) {
+      got = await src.latest([inst]);
+      pick = got.isEmpty ? null : got.first;
+    } else {
+      got = await src.closes(
+        inst,
+        date.subtract(const Duration(days: 10)),
+        date,
+      );
+      for (final o in got) {
+        if (!o.sessionDate.isAfter(date) &&
+            (pick == null || o.sessionDate.isAfter(pick.sessionDate))) {
+          pick = o;
+        }
+      }
+    }
+    await prices.addFetched(got);
+    notifyListeners();
+    return pick;
+  });
 
   Future<void> _refreshPrices(bool manual) async {
     if (prefs.enabledSources.isEmpty) return;

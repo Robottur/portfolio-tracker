@@ -5,6 +5,7 @@ import 'package:portfolio_core/portfolio_core.dart';
 import '../app/app_controller.dart';
 import 'asset_labels.dart';
 import 'privacy.dart';
+import 'status_banner.dart';
 import 'transactions_screen.dart';
 
 const _badNumber = 'Enter a number like 12.50';
@@ -28,6 +29,9 @@ class _TransactionFormState extends State<TransactionForm> {
   bool _orderTouched = false;
   bool _saving = false;
   String? _saveError;
+  bool _fetching = false;
+  String? _priceNote;
+  String? _priceError;
   final _symbol = TextEditingController();
   final _order = TextEditingController();
   final _qty = TextEditingController();
@@ -205,6 +209,72 @@ class _TransactionFormState extends State<TransactionForm> {
     });
   }
 
+  Instrument? _instrument() {
+    try {
+      return Instrument.create(
+        _class,
+        _class == AssetClass.gold ? 'GRAM' : _symbol.text,
+      );
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<void> _getPrice(Instrument inst) async {
+    final src = _c.priceSourceFor(inst.assetClass, _date);
+    if (!_c.prefs.enabledSources.contains(src.id)) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          content: Text(
+            'This sends ${inst.code} to ${src.domains.join(', ')}. '
+            'Enable ${src.label} and fetch?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Enable and fetch'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
+    setState(() {
+      _fetching = true;
+      _priceNote = null;
+      _priceError = null;
+    });
+    String? note, error;
+    try {
+      if (!_c.prefs.enabledSources.contains(src.id)) {
+        await _c.setSourceEnabled(src.id, true);
+      }
+      final obs = await _c.fetchPriceFor(inst, _date);
+      if (obs == null) {
+        error = 'No price found for that date';
+      } else {
+        _price.text = roundHalfEven(obs.price, 8).toString();
+        final tag = priceTag(obs);
+        note = '${src.label} · ${stamp(obs)}${tag == null ? '' : ' · $tag'}';
+      }
+    } on SourceException catch (e) {
+      error = '${src.label}: ${e.message}';
+    } on Object {
+      error = 'Could not get a price';
+    }
+    if (!mounted) return;
+    setState(() {
+      _fetching = false;
+      _priceNote = note;
+      _priceError = error;
+    });
+  }
+
   Future<void> _save(Transaction tx) async {
     setState(() {
       _saving = true;
@@ -249,6 +319,7 @@ class _TransactionFormState extends State<TransactionForm> {
     final isGold = _class == AssetClass.gold;
     final bist = _class == AssetClass.bistShare;
     final fund = _class == AssetClass.fund;
+    final inst = _symbol.text.trim().isEmpty && !isGold ? null : _instrument();
 
     return Scaffold(
       appBar: AppBar(
@@ -322,7 +393,36 @@ class _TransactionFormState extends State<TransactionForm> {
               isGold ? 'grams' : (fund ? 'Fund shares' : 'Quantity'),
               _qty,
             ),
-            _decimalField('price', 'Unit price (TRY)', _price),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _decimalField('price', 'Unit price (TRY)', _price),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, left: 8),
+                  child: TextButton(
+                    onPressed: inst == null || _fetching
+                        ? null
+                        : () => _getPrice(inst),
+                    child: _fetching
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Get price'),
+                  ),
+                ),
+              ],
+            ),
+            // No amount in it, so it stays visible in privacy mode.
+            if (_priceNote != null) Text(_priceNote!),
+            if (_priceError != null)
+              Text(
+                _priceError!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
           ],
           if (_type == TxType.dividend) ...[
             _decimalField('gross', 'Gross amount (TRY)', _gross),

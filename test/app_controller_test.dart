@@ -320,6 +320,48 @@ void main() {
     await expectLater(p.setPrivacyMode(true), throwsStateError);
     expect(p.privacyMode, isFalse);
   });
+
+  group('fetchPriceFor', () {
+    final thyao = Instrument.create(AssetClass.bistShare, 'THYAO');
+    String fx(String f) =>
+        File('packages/portfolio_core/test/fixtures/$f').readAsStringSync();
+
+    test('two concurrent calls run one after another', () async {
+      var running = 0, maxRunning = 0;
+      final prefs = await DevicePrefs.load();
+      await prefs.setEnabledSources({'yahoo'});
+      final c = AppController(
+        prefs: prefs,
+        privateDir: tmp,
+        network: MockClient((_) async {
+          maxRunning = ++running > maxRunning ? running : maxRunning;
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+          running--;
+          return http.Response(
+            fx('yahoo_thyao.json'),
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+        nowUtc: () => DateTime.utc(2026, 10, 9, 12),
+      );
+      final r = await Future.wait([
+        c.fetchPriceFor(thyao, c.today),
+        c.fetchPriceFor(thyao, c.today),
+      ]);
+      expect(r.every((o) => o != null), isTrue);
+      expect(maxRunning, 1);
+    });
+
+    test('a disabled source throws before any request', () async {
+      final c = await make();
+      await expectLater(
+        c.fetchPriceFor(thyao, c.today),
+        throwsA(isA<StateError>()),
+      );
+      expect(calls, 0);
+    });
+  });
 }
 
 class _RefusingStore extends InMemorySharedPreferencesStore {
