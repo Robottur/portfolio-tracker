@@ -157,6 +157,42 @@ void main() {
         pos.quantity * convertPrices(prices, rates).latest('FX:USD')!.price;
     expect(r20(v - pos.cost), d('0'));
   });
+  test('non-lifetime: baseline prices convert at the baseline rate', () {
+    final prices = FixedPrices([
+      obs('FX:USD', '30', day1),
+      obs('FX:USD', '32', DateTime.utc(2026, 1, 20)),
+      obs('XIST:AAA', '12', DateTime.utc(2026, 1, 30)),
+      obs('XIST:AAA', '15', today),
+      obs('FX:USD', '40', today),
+    ]);
+    final r = measuredPeriod(
+      rates: UsdRates(prices),
+      period: Period.oneMonth,
+      today: today,
+      transactions: [buy(on: day1, qty: '100', price: '10')],
+      prices: prices,
+      calendar: cal,
+    );
+    expect(r.baseline, DateTime.utc(2026, 2, 1));
+    expect(r20(r.valueStart!), r20(divide(d('1200'), d('32'))));
+    expect(r20(r.valueEnd!), d('37.5'));
+  });
+
+  test('stale latest price converts at the latest rate', () {
+    final prices = FixedPrices([
+      obs('XIST:AAA', '15', DateTime.utc(2026, 2, 20)),
+      obs('FX:USD', '32', DateTime.utc(2026, 2, 20)),
+      obs('FX:USD', '40', today),
+    ]);
+    final p = convertPrices(prices, UsdRates(prices)).latest('XIST:AAA')!;
+    expect(r20(p.price), r20(d('15') * divide(Decimal.one, d('40'))));
+  });
+
+  test('invalid ledger reports the ledger, not a missing rate', () {
+    final prices = FixedPrices([obs('XIST:AAA', '15', today)]);
+    final r = life(UsdRates(prices), [sell(on: day1)], prices);
+    expect(r.unavailableReason, 'Ledger has unresolved issues');
+  });
 }
 
 class _Fixed implements Rates {

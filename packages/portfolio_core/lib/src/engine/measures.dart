@@ -6,6 +6,7 @@ import '../market/cpi.dart';
 import '../market/price.dart';
 import '../model/transaction.dart';
 import 'periods.dart';
+import 'replay.dart';
 import 'returns.dart';
 
 enum Measure { tryNominal, usd, real }
@@ -82,12 +83,13 @@ class RealRates implements Rates {
 List<Transaction> convertTransactions(Iterable<Transaction> txs, Rates rates) {
   final sorted = txs.toList()
     ..sort((a, b) => a.effectiveDate.compareTo(b.effectiveDate));
+  final rated = <Transaction>[];
   for (final t in sorted) {
-    if (rates.at(t.effectiveDate) == null) {
-      throw MissingRate(rates.missing(t.effectiveDate));
-    }
+    final r = rates.at(t.effectiveDate);
+    if (r == null) throw MissingRate(rates.missing(t.effectiveDate));
+    rated.add(t.scaledBy(r));
   }
-  return [for (final t in txs) t.scaledBy(rates.at(t.effectiveDate)!)];
+  return rated;
 }
 
 PriceLookup convertPrices(PriceLookup prices, Rates rates) =>
@@ -135,6 +137,16 @@ PeriodResult measuredPeriod({
   required PriceLookup prices,
   required TradingCalendar calendar,
 }) {
+  // computePeriod's ledger check must win over a missing rate.
+  if (!replay(transactions, through: today).valid) {
+    return unavailablePeriod(
+      reason: 'Ledger has unresolved issues',
+      period: period,
+      today: today,
+      transactions: transactions,
+      calendar: calendar,
+    );
+  }
   try {
     return computePeriod(
       period: period,
