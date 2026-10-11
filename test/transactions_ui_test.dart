@@ -29,7 +29,11 @@ void main() {
   late AppController c;
 
   setUp(() {
-    SharedPreferences.setMockInitialValues({});
+    // Fixed device id: the conflict screen shows it, and a random one can
+    // contain the amount digits the privacy test looks for.
+    SharedPreferences.setMockInitialValues({
+      'device_id': '11111111-1111-4111-8111-111111111111',
+    });
     tmp = Directory.systemTemp.createTempSync('txui');
     folder = MemoryRecordFolder();
   });
