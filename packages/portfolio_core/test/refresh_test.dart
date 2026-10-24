@@ -183,6 +183,7 @@ void main() {
           );
         }),
         nowUtc: () => now,
+        sleep: (_) async {},
       );
       final r = make(tefas);
       final rep = await r.refresh(current: funds, history: {});
@@ -512,6 +513,22 @@ void main() {
       ]);
     },
   );
+
+  test('a weekend is settled by its Friday close, except for crypto', () async {
+    enabled = {'isyatirim', 'btcturk'};
+    await store.addFetched([
+      obs('XIST:AAA', '5', date(2026, 10, 9)),
+      obs(btc.id, '5', date(2026, 10, 9)),
+    ]);
+    await rc.refresh(
+      current: [],
+      history: {
+        date(2026, 10, 11): [bist, btc], // Sunday
+      },
+    );
+    expect(src['isyatirim']!.calls, isEmpty);
+    expect(src['btcturk']!.calls, hasLength(1));
+  });
 
   test('a window fetched earlier covers its dates, and only those', () async {
     enabled = {'isyatirim'};

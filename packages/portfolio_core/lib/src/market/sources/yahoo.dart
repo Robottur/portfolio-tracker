@@ -154,6 +154,8 @@ class YahooSource implements PriceSource {
           ),
         );
       } on SourceException catch (e) {
+        // A rate limit applies to every request: stop and back off.
+        if (e.retryAfter != null) rethrow;
         last = e;
       }
     }

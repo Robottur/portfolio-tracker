@@ -278,4 +278,28 @@ void main() {
     expect(r, isEmpty);
     expect(remembered, isEmpty);
   });
+
+  test(
+    'past 5 requests a minute, it waits for the oldest to age out',
+    () async {
+      var now = testNow;
+      final waits = <Duration>[];
+      final s = TefasSource(
+        MockClient((_) async => _json(_fx('tefas_tte_yat.json'))),
+        nowUtc: () => now,
+        knownKind: (_) => 'YAT',
+        sleep: (d) async {
+          waits.add(d);
+          now = now.add(d);
+        },
+      );
+      for (var n = 0; n < 5; n++) {
+        await s.latest([tte]);
+        now = now.add(const Duration(seconds: 10));
+      }
+      expect(waits, isEmpty);
+      await s.latest([tte]);
+      expect(waits, [const Duration(seconds: 10)]);
+    },
+  );
 }

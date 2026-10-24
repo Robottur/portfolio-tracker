@@ -1,4 +1,5 @@
 import '../dates.dart';
+import '../engine/periods.dart';
 import '../model/instrument.dart';
 import 'consent_client.dart';
 import 'price.dart';
@@ -279,7 +280,15 @@ class RefreshCoordinator {
       final day = e.key;
       for (final i in e.value) {
         // Only an exact-date close counts: an older one may hide newer sessions.
-        if (store.closeOnOrBefore(i.id, day)?.sessionDate == day) continue;
+        // A weekend is settled by its Friday close, so restarts do not refetch.
+        // shortcut: weekends only (crypto trades on them); holidays need an exchange calendar
+        final known = store.closeOnOrBefore(i.id, day)?.sessionDate;
+        if (known == day ||
+            (day.weekday > DateTime.friday &&
+                i.assetClass != AssetClass.crypto &&
+                known == weekdayBefore(day))) {
+          continue;
+        }
         final windows = _windows[i.id] ?? const [];
         if (windows.any((w) => !day.isBefore(w.$1) && !day.isAfter(w.$2))) {
           continue;

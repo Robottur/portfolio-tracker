@@ -88,6 +88,23 @@ void main() {
       }
     });
 
+    test('a 429 stops the remaining instruments', () async {
+      var requests = 0;
+      final s = YahooSource(
+        MockClient((_) async {
+          requests++;
+          return http.Response('', 429, headers: {'retry-after': '30'});
+        }),
+        nowUtc: nowUtc,
+      );
+      final asels = Instrument.create(AssetClass.bistShare, 'ASELS');
+      await expectLater(
+        s.latest([asels, thyao]),
+        throwsA(isA<SourceException>()),
+      );
+      expect(requests, 1);
+    });
+
     test('429 carries retryAfter', () async {
       final s = YahooSource(
         routes({

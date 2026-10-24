@@ -11,6 +11,8 @@ const _maxSpanDays = 28;
 
 String _ymd(DateTime d) => isoDate(d).replaceAll('-', '');
 
+Future<void> _delay(Duration d) => Future.delayed(d);
+
 class TefasSource implements PriceSource {
   TefasSource(
     this._c, {
@@ -18,6 +20,7 @@ class TefasSource implements PriceSource {
     this.knownKind,
     this.rememberKind,
     this.timeout = requestTimeout,
+    this.sleep = _delay,
   }) : _now = nowUtc ?? (() => DateTime.now().toUtc());
 
   final http.Client _c;
@@ -25,6 +28,21 @@ class TefasSource implements PriceSource {
   final String? Function(String code)? knownKind;
   final Future<void> Function(String code, String kind)? rememberKind;
   final Duration timeout;
+
+  /// Injectable so tests need not wait.
+  final Future<void> Function(Duration) sleep;
+  final _sent = <DateTime>[];
+
+  /// TEFAS allows about 6 requests a minute: past 5, wait for the oldest to
+  /// age out instead of drawing a 429 and a back-off.
+  Future<void> _pace() async {
+    const minute = Duration(minutes: 1);
+    _sent.removeWhere((t) => _now().difference(t) >= minute);
+    if (_sent.length >= 5) {
+      await sleep(_sent.first.add(minute).difference(_now()));
+    }
+    _sent.add(_now());
+  }
 
   @override
   String get id => 'tefas';
@@ -50,6 +68,7 @@ class TefasSource implements PriceSource {
   ) async {
     final guessed = known == null;
     for (final kind in guessed ? _kinds : [known]) {
+      await _pace();
       final json = await postJson(
         _c,
         Uri.https(tefasHost, '/api/funds/fonGnlBlgSiraliGetir'),
