@@ -6,6 +6,8 @@ crypto and gold (grams); the app shows holdings, average cost, realized and
 unrealized gain in TRY, and a Modified Dietz return estimate per period. It is
 a tracker, not a trading tool: there is no cash balance.
 
+Developed with the help of [Claude](https://claude.ai), Anthropic's AI assistant.
+
 ## Privacy
 
 - A fresh install makes no network request. Each price source is a separate,
