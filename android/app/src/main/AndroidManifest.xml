@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove"/>
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" tools:node="remove"/>
     <application
-        android:label="asset_portfolio"
+        android:label="Asset Portfolio"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
