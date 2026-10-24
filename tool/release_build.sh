@@ -16,6 +16,15 @@ if [ -e "$out" ]; then
   echo "$out already exists; remove it or set BUILD_DIR" >&2
   exit 1
 fi
+if [[ " ${targets[*]} " =~ \ (apk|appbundle)\  ]]; then
+  # Fail before building rather than after Gradle's signing step.
+  store=$(sed -n 's/^storeFile=//p' "$src/android/key.properties" 2>/dev/null)
+  case $store in /*) ;; ?*) store=$src/android/app/$store ;; esac
+  if [ ! -f "$store" ]; then
+    echo "android/key.properties must set storeFile to your keystore (see README); got: ${store:-nothing}" >&2
+    exit 1
+  fi
+fi
 if [ -n "$(git -C "$src" status --porcelain --untracked-files=no)" ]; then
   echo "Uncommitted changes would not be in the build; commit them first" >&2
   exit 1
