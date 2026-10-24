@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:asset_portfolio/app/app_controller.dart';
 import 'package:asset_portfolio/app/device_prefs.dart';
 import 'package:asset_portfolio/main.dart';
+import 'package:asset_portfolio/ui/holding_screen.dart';
 import 'package:asset_portfolio/ui/status_banner.dart';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
@@ -194,5 +195,24 @@ void main() {
     await tester.tap(find.textContaining('AAA').first);
     await tester.pumpAndSettle();
     expect(find.text('−150.00 TRY loss'), findsOneWidget);
+  });
+
+  testWidgets('holding gains follow the selected period', (tester) async {
+    await boot(tester, width: 360);
+    // 1W baseline is Sat 10-03: 200 held at 16, then 50 sold at 18.
+    await tester.runAsync(
+      () => c.setManualPrice('XIST:AAA', DateTime.utc(2026, 10, 2), _d('16')),
+    );
+    await tester.pumpAndSettle();
+    Finder inRow(String t) => find.descendant(
+      of: find.byType(HoldingTile),
+      matching: find.textContaining(t),
+    );
+    await tester.tap(find.text('1W'));
+    await tester.pumpAndSettle();
+    expect(inRow('400.00'), findsOneWidget); // 2700 − 3200 + 900
+    expect(tester.takeException(), isNull); // seven periods fit at 360 px
+    await lifetime(tester);
+    expect(inRow('450.00'), findsOneWidget); // 2700 − cost 2250
   });
 }

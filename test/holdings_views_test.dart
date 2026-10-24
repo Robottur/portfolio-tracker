@@ -96,6 +96,8 @@ void main() {
   group('holding rows', () {
     testWidgets('show the gain as TRY and %', (tester) async {
       await boot(tester);
+      await tester.tap(find.text('Lifetime')); // rows show gain against cost
+      await tester.pumpAndSettle();
       final aaa = find.ancestor(
         of: find.text('AAA'),
         matching: find.byType(ListTile),

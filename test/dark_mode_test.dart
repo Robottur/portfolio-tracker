@@ -82,6 +82,8 @@ void main() {
 
   testWidgets('a gain uses the dark-theme green', (tester) async {
     await boot(tester);
+    await tester.tap(find.text('Lifetime')); // rows show gain against cost
+    await tester.pumpAndSettle();
     await tester.runAsync(() => c.setThemeMode(ThemeMode.dark));
     await tester.pumpAndSettle();
     final gain = tester.widget<Text>(find.text('+20.00 TRY gain').first);

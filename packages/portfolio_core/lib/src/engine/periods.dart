@@ -1,6 +1,15 @@
 import '../dates.dart';
 
-enum Period { daily, oneMonth, threeMonths, oneYear, lifetime }
+// Daily first: its fetch window also covers the 3D and 1W baselines.
+enum Period {
+  daily,
+  threeDays,
+  oneWeek,
+  oneMonth,
+  threeMonths,
+  oneYear,
+  lifetime,
+}
 
 class TradingCalendar {
   TradingCalendar(Iterable<DateTime> knownDays) : _days = knownDays.toList();
@@ -32,6 +41,8 @@ DateTime weekdayBefore(DateTime d) {
 DateTime baselineFor(Period p, DateTime end, TradingCalendar cal) =>
     switch (p) {
       Period.daily => cal.lastTradingDayBefore(end),
+      Period.threeDays => end.subtract(const Duration(days: 3)),
+      Period.oneWeek => end.subtract(const Duration(days: 7)),
       Period.oneMonth => minusMonthsClamped(end, 1),
       Period.threeMonths => minusMonthsClamped(end, 3),
       Period.oneYear => minusMonthsClamped(end, 12),

@@ -412,26 +412,44 @@ class AppController extends ChangeNotifier {
   // Replays are costly; every change goes through notifyListeners, which clears these.
   final _holdingsCache = <Measure, (ReplayResult, PriceLookup)?>{};
   final _periodCache = <(Measure, Period), PeriodResult>{};
+  final _holdingPeriodCache = <(Measure, Period), Map<String, PeriodResult>>{};
 
   @override
   void notifyListeners() {
     _holdingsCache.clear();
     _periodCache.clear();
+    _holdingPeriodCache.clear();
     super.notifyListeners();
   }
 
   PeriodResult displayPeriodIn(Measure m, Period p) =>
-      _periodCache[(m, p)] ??= _displayPeriodIn(m, p);
+      _periodCache[(m, p)] ??= _displayPeriodIn(m, p, displayTransactions);
 
-  PeriodResult _displayPeriodIn(Measure m, Period p) {
+  /// Each instrument's own [p] result, from its transactions alone.
+  Map<String, PeriodResult> holdingPeriodsIn(Measure m, Period p) =>
+      _holdingPeriodCache[(m, p)] ??= {
+        for (final id in {for (final t in displayTransactions) t.instrument.id})
+          id: _displayPeriodIn(m, p, [
+            for (final t in displayTransactions)
+              if (t.instrument.id == id) t,
+          ]),
+      };
+
+  PeriodResult _displayPeriodIn(Measure m, Period p, List<Transaction> txs) {
     final r = ratesFor(m);
     return r == null
-        ? displayPeriod(p)
+        ? computePeriod(
+            period: p,
+            today: today,
+            transactions: txs,
+            prices: prices,
+            calendar: _calendar,
+          )
         : measuredPeriod(
             rates: r,
             period: p,
             today: today,
-            transactions: displayTransactions,
+            transactions: txs,
             prices: prices,
             calendar: _calendar,
           );

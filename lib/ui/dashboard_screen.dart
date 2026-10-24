@@ -12,6 +12,8 @@ import 'status_banner.dart';
 
 const _labels = {
   Period.daily: 'Daily',
+  Period.threeDays: '3D',
+  Period.oneWeek: '1W',
   Period.oneMonth: '1M',
   Period.threeMonths: '3M',
   Period.oneYear: '1Y',
@@ -68,8 +70,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           c.today.weekday == DateTime.sunday;
       final entries = c.displayIncomplete
           ? <HoldingEntry>[]
-          : entriesFrom(shown);
-      final real = realGains(c);
+          : entriesFrom(
+              shown,
+              // Lifetime rows keep the gain against cost.
+              periods: _period == Period.lifetime
+                  ? null
+                  : c.holdingPeriodsIn(m, _period),
+            );
+      final real = realGains(c, _period);
       // Groups keep the name order; holdings are sorted within each group.
       final byClass = <AssetClass, List<HoldingEntry>>{};
       for (final e in entries) {

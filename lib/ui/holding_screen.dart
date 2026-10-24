@@ -10,9 +10,12 @@ import 'privacy.dart';
 import 'status_banner.dart';
 
 class HoldingEntry {
-  HoldingEntry(this.position, this.price);
+  HoldingEntry(this.position, this.price, [this.period]);
   final Position position;
   final PriceObservation? price;
+
+  /// The selected period's own result; null means lifetime (against cost).
+  final PeriodResult? period;
 
   Decimal? get value => price == null ? null : position.quantity * price!.price;
   Decimal? get unrealized => value == null ? null : value! - position.cost;
@@ -20,30 +23,41 @@ class HoldingEntry {
       unrealized != null && position.cost > Decimal.zero
       ? divide(unrealized! * Decimal.fromInt(100), position.cost)
       : null;
+  Decimal? get gain => period == null ? unrealized : period!.gain;
+  Decimal? get gainPercent =>
+      period == null ? unrealizedPercent : period!.returnPercent;
   bool get closed => position.quantity == Decimal.zero;
 }
 
 List<HoldingEntry> entriesFrom(
   (ReplayResult, PriceLookup) data, {
   bool closed = false,
+  Map<String, PeriodResult>? periods,
 }) => [
   for (final p in data.$1.positions.values)
     if (closed || p.quantity > Decimal.zero)
-      HoldingEntry(p, data.$2.latest(p.instrument.id)),
+      HoldingEntry(
+        p,
+        data.$2.latest(p.instrument.id),
+        periods?[p.instrument.id],
+      ),
 ]..sort((a, b) => a.position.instrument.id.compareTo(b.position.instrument.id));
 
 List<HoldingEntry> holdingEntries(AppController c, {bool closed = false}) =>
     entriesFrom((c.displayReplay, c.prices), closed: closed);
 
-/// Unrealized % per open holding in real terms; empty when REAL is unavailable.
-Map<String, Decimal> realGains(AppController c) {
+/// Gain % per open holding over [p] in real terms; empty when REAL is
+/// unavailable.
+Map<String, Decimal> realGains(AppController c, [Period p = Period.lifetime]) {
   final h = c.holdingsIn(Measure.real);
+  final periods = p == Period.lifetime || h == null
+      ? null
+      : c.holdingPeriodsIn(Measure.real, p);
   return h == null
       ? {}
       : {
-          for (final e in entriesFrom(h))
-            if (e.unrealizedPercent != null)
-              e.position.instrument.id: e.unrealizedPercent!,
+          for (final e in entriesFrom(h, periods: periods))
+            if (e.gainPercent != null) e.position.instrument.id: e.gainPercent!,
         };
 }
 
@@ -72,8 +86,8 @@ List<HoldingEntry> sortEntries(List<HoldingEntry> entries, HoldingSort by) {
   Decimal? key(HoldingEntry e) => switch (by) {
     HoldingSort.name => null,
     HoldingSort.value => e.value,
-    HoldingSort.gainTry => e.closed ? null : e.unrealized,
-    HoldingSort.gainPercent => e.closed ? null : e.unrealizedPercent,
+    HoldingSort.gainTry => e.closed ? null : e.gain,
+    HoldingSort.gainPercent => e.closed ? null : e.gainPercent,
   };
   int byName(HoldingEntry a, HoldingEntry b) {
     final x = a.position.instrument, y = b.position.instrument;
@@ -176,16 +190,16 @@ class HoldingTile extends StatelessWidget {
             const Text('Price missing')
           else
             Amount(formatMoney(entry.value!, measure)),
-          if (entry.unrealized != null && !entry.closed) ...[
+          if (entry.gain != null && !entry.closed) ...[
             Amount(
-              signedMoney(entry.unrealized!, measure),
-              style: gainStyle(context, entry.unrealized!),
+              signedMoney(entry.gain!, measure),
+              style: gainStyle(context, entry.gain!),
             ),
             // Own line: beside the TRY gain it overflows phone widths.
-            if (entry.unrealizedPercent != null)
+            if (entry.gainPercent != null)
               Amount(
-                signedPercent(entry.unrealizedPercent!),
-                style: gainStyle(context, entry.unrealized!),
+                signedPercent(entry.gainPercent!),
+                style: gainStyle(context, entry.gain!),
               ),
           ],
         ],

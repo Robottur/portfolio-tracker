@@ -89,6 +89,7 @@ void main() {
 
   testWidgets('usd switch shows dollar values', (tester) async {
     await boot(tester);
+    await lifetime(tester);
     await pick(tester, 'USD');
     expect(find.text('37.50 USD'), findsWidgets);
     expect(find.text('+12.50%'), findsWidgets);
@@ -96,6 +97,7 @@ void main() {
 
   testWidgets('real switch shows real gain and note', (tester) async {
     await boot(tester);
+    await lifetime(tester);
     await pick(tester, 'Real');
     expect(find.text('+25.00%'), findsWidgets);
     expect(
@@ -143,6 +145,7 @@ void main() {
 
   testWidgets('holding marker and detail sentence', (tester) async {
     await boot(tester);
+    await lifetime(tester);
     expect(find.text('real +25.0%'), findsOneWidget);
     await tester.tap(find.text('AAA'));
     await tester.pumpAndSettle();

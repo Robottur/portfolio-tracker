@@ -20,6 +20,14 @@ void main() {
       baselineFor(Period.daily, date(2026, 10, 11), cal),
       date(2026, 10, 9),
     );
+    expect(
+      baselineFor(Period.threeDays, date(2026, 10, 1), cal),
+      date(2026, 9, 28),
+    );
+    expect(
+      baselineFor(Period.oneWeek, date(2026, 10, 1), cal),
+      date(2026, 9, 24),
+    );
   });
 
   test('calendar falls back to the latest weekday when nothing is known', () {

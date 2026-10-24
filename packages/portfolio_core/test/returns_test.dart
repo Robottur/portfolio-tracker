@@ -162,9 +162,12 @@ void main() {
       ],
       calendar: cal,
     );
-    // daily = Fri 05-29; 1M = 04-30; 3M = 02-28; 1Y/lifetime before first.
+    // daily = Fri 05-29; 3D = 05-27; 1W = 05-23; 1M = 04-30; 3M = 02-28;
+    // 1Y/lifetime before first.
     expect(needs.keys.toSet(), {
       date(2026, 5, 29),
+      date(2026, 5, 27),
+      date(2026, 5, 23),
       date(2026, 4, 30),
       date(2026, 2, 28),
     });
