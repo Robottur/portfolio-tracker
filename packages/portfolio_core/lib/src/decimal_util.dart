@@ -3,7 +3,7 @@ import 'package:decimal/decimal.dart';
 final _recordField = RegExp(r'^\d{1,18}(\.\d{1,8})?$');
 final _userDecimal = RegExp(r'^\d+(\.\d+)?$');
 
-/// Parses a record amount string (§5.6); rejects anything but plain digits.
+/// Parses a record amount string; rejects anything but plain digits.
 Decimal parseDecimalField(String s, {bool allowZero = false}) {
   if (!_recordField.hasMatch(s)) {
     throw FormatException('Invalid decimal field', s);

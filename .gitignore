@@ -1,7 +1,29 @@
 .claude/
-.idea/
-.vscode/
+.idea
+.vscode
 .superpowers/
+
+# Private design notes: kept locally, never published.
+/PROJECT.md
+/docs/superpowers/
+
+# Release artifacts are published separately, never committed.
+*.apk
+*.aab
+*.tar.gz
+*.zip
+*.msix
+
+# Empty placeholders a sandboxed tool can leave in the repo root.
+/.bash_profile
+/.bashrc
+/.gitconfig
+/.gitmodules
+/.mcp.json
+/.profile
+/.ripgreprc
+/.zprofile
+/.zshrc
 
 *.class
 *.log

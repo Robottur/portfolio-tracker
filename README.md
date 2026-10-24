@@ -98,7 +98,7 @@ portfolio.
 
 ## Release testing
 
-See `docs/testing/release-checklist.md`. Design: `docs/superpowers/specs/`.
+See `docs/testing/release-checklist.md`.
 
 ## License
 
