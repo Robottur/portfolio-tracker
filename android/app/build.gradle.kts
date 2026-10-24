@@ -6,7 +6,7 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// Release signing is optional: without android/key.properties (git-ignored) the release build falls back to debug keys.
+// Release signing comes from android/key.properties (git-ignored); see README.
 val keyProps = Properties().apply {
     val f = rootProject.file("key.properties")
     if (f.exists()) f.inputStream().use { load(it) }
@@ -50,8 +50,22 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")
         }
+    }
+}
+
+// A published APK signed with debug keys cannot be upgraded by one signed with
+// the real key, so a release build without key.properties stops here.
+gradle.taskGraph.whenReady {
+    val release = allTasks.any {
+        it.project == project && it.name in setOf("assembleRelease", "bundleRelease")
+    }
+    if (release && !keyProps.containsKey("storeFile")) {
+        throw GradleException(
+            "Release builds need android/key.properties (see README). " +
+                "Use --debug or --profile to test without a release key.",
+        )
     }
 }
 

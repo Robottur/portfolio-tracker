@@ -13,8 +13,10 @@ a tracker, not a trading tool: there is no cash balance.
 - When a source is enabled, only the requested symbols (plus ordinary HTTP
   metadata such as IP address and user agent) are sent to that source's domain.
   Quantities, costs and records are never sent.
-- No telemetry, analytics, crash reporting, ads or update checks. No accounts
-  or API keys.
+- No telemetry, analytics, crash reporting, ads or update checks. No accounts.
+  The only key is an optional EVDS API key you enter yourself: it is stored
+  unencrypted in the app's settings on that device and sent only to
+  `evds3.tcmb.gov.tr`.
 - Your data is plaintext JSON in a folder you choose and sync yourself with
   Syncthing. There is no app server and no encryption at rest.
 - Price sources are unofficial free endpoints (except TCMB); they can break or
@@ -29,26 +31,38 @@ Toolchain: Flutter 3.47.7 (Dart 3.13.5).
     flutter analyze && flutter test
     (cd packages/portfolio_core && dart test)
 
-Linux (on Linux):
+Builds to publish: Flutter writes the build directory's path into the
+binary, so build from a fresh clone at a neutral path. On Linux this script
+does that and fails if a shipped file still names your working copy or home
+directory (commit first; it builds `HEAD`):
+
+    tool/release_build.sh linux apk     # clones to /tmp/asset_portfolio
+    # /tmp/asset_portfolio/build/linux/x64/release/bundle/asset_portfolio
+    # /tmp/asset_portfolio/build/app/outputs/flutter-apk/app-release.apk
+
+Linux (on Linux, for local use):
 
     flutter build linux --release
     # build/linux/x64/release/bundle/asset_portfolio
 
-Windows (on Windows):
+Windows (on Windows): clone to a neutral path such as `C:\build\asset_portfolio`
+first, then:
 
     flutter build windows --release
 
 Android APK. Create the signing key once, outside the repository, and keep it
 for all future upgrades:
 
-    keytool -genkey -v -keystore <path-outside-repo>/portfolio-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias portfolio
+    keytool -genkey -v -keystore <path-outside-repo>/portfolio-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias portfolio -dname "CN=asset_portfolio"
     cp android/key.properties.example android/key.properties   # then fill in the values
     flutter build apk --release
     # build/app/outputs/flutter-apk/app-release.apk
 
-`android/key.properties`, `*.jks` and `*.keystore` are git-ignored. Without
-`key.properties` the release build is signed with debug keys (not for
-distribution). Verify permissions (expect only `INTERNET` plus Flutter's
+The certificate's name fields are public inside every APK, so keep `-dname`
+neutral. `android/key.properties`, `*.jks` and `*.keystore` are git-ignored.
+Without `key.properties` a release build stops with an error rather than
+signing with debug keys; use `--debug` or `--profile` to test. Verify
+permissions (expect only `INTERNET` plus Flutter's
 `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`):
 
     $ANDROID_HOME/build-tools/<ver>/aapt2 dump permissions build/app/outputs/flutter-apk/app-release.apk
@@ -83,3 +97,7 @@ portfolio.
 ## Release testing
 
 See `docs/testing/release-checklist.md`. Design: `docs/superpowers/specs/`.
+
+## License
+
+MIT, see `LICENSE`.

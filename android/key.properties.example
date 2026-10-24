@@ -1,4 +1,5 @@
 # Copy to android/key.properties (git-ignored) and fill in. Keep the keystore outside the repository.
+# The certificate's name fields are public inside every APK: create it with a neutral -dname (see README).
 storePassword=CHANGE_ME
 keyPassword=CHANGE_ME
 keyAlias=portfolio
