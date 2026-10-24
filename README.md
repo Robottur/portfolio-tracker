@@ -1,4 +1,4 @@
-# Asset Portfolio
+# Portfolio Tracker
 
 A private, personal asset tracker for Linux, Windows and Android. You record
 buys, sells, share dividends and splits for BIST shares, foreign currencies,
@@ -38,16 +38,16 @@ binary, so build from a fresh clone at a neutral path. On Linux this script
 does that and fails if a shipped file still names your working copy or home
 directory (commit first; it builds `HEAD`):
 
-    tool/release_build.sh linux apk     # clones to /tmp/asset_portfolio
-    # /tmp/asset_portfolio/build/linux/x64/release/bundle/asset_portfolio
-    # /tmp/asset_portfolio/build/app/outputs/flutter-apk/app-release.apk
+    tool/release_build.sh linux apk     # clones to /tmp/portfolio-tracker
+    # /tmp/portfolio-tracker/build/linux/x64/release/bundle/portfolio-tracker
+    # /tmp/portfolio-tracker/build/app/outputs/flutter-apk/app-release.apk
 
 Linux (on Linux, for local use):
 
     flutter build linux --release
-    # build/linux/x64/release/bundle/asset_portfolio
+    # build/linux/x64/release/bundle/portfolio-tracker
 
-Windows (on Windows): clone to a neutral path such as `C:\build\asset_portfolio`
+Windows (on Windows): clone to a neutral path such as `C:\build\portfolio-tracker`
 first, then:
 
     flutter build windows --release
@@ -55,7 +55,7 @@ first, then:
 Android APK. Create the signing key once, outside the repository, and keep it
 for all future upgrades:
 
-    keytool -genkey -v -keystore <path-outside-repo>/portfolio-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias portfolio -dname "CN=asset_portfolio"
+    keytool -genkey -v -keystore <path-outside-repo>/portfolio-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias portfolio -dname "CN=portfolio-tracker"
     cp android/key.properties.example android/key.properties   # then fill in the values
     flutter build apk --release
     # build/app/outputs/flutter-apk/app-release.apk

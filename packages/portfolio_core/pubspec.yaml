@@ -1,5 +1,5 @@
 name: portfolio_core
-description: Pure-Dart core (models, engine, sources) for the asset portfolio app.
+description: Pure-Dart core (models, engine, sources) for Portfolio Tracker.
 publish_to: none
 
 environment:

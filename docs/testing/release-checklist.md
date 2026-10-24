@@ -7,7 +7,7 @@ Fill the Result column on real devices. Android and Windows gates have not been 
 | # | Gate | Expected | Result |
 | --- | --- | --- | --- |
 | 1 | `flutter analyze`, `flutter test`, `cd packages/portfolio_core && dart test` | All pass | |
-| 2 | `flutter build linux --release`, launch `build/linux/x64/release/bundle/asset_portfolio` | Builds; app starts and shows setup screen | |
+| 2 | `flutter build linux --release`, launch `build/linux/x64/release/bundle/portfolio-tracker` | Builds; app starts and shows setup screen | |
 | 3 | On a Windows machine: `flutter build windows --release`, launch the exe | Builds; app starts; folder can be chosen | |
 | 4 | Create signing key outside repo, fill `android/key.properties`, `flutter build apk --release`; then `apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk` | Signed APK at `build/app/outputs/flutter-apk/app-release.apk`; the printed certificate is your release key, not "Android Debug" | |
 | 5 | `$ANDROID_HOME/build-tools/<ver>/aapt2 dump permissions` on the APK | Only `android.permission.INTERNET` plus `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`; any storage permission is removed via `tools:node="remove"` | |

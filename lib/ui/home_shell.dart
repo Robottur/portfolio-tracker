@@ -91,7 +91,7 @@ class _HomeShellState extends State<HomeShell> {
     };
     return Scaffold(
       appBar: AppBar(
-        title: Text(c.scan?.descriptor?.name ?? 'Asset Portfolio'),
+        title: Text(c.scan?.descriptor?.name ?? 'Portfolio Tracker'),
         actions: [
           IconButton(
             tooltip: 'Privacy mode',

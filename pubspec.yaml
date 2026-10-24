@@ -1,4 +1,4 @@
-name: asset_portfolio
+name: portfolio_tracker
 description: Privacy-focused personal asset portfolio tracker.
 publish_to: none
 version: 0.1.0+1

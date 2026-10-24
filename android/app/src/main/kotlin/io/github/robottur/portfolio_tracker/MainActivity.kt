@@ -1,4 +1,4 @@
-package dev.local.asset_portfolio
+package io.github.robottur.portfolio_tracker
 
 import io.flutter.embedding.android.FlutterActivity
 

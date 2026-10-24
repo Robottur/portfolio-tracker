@@ -35,7 +35,7 @@ class AssetPortfolioApp extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
     builder: (_, _) => MaterialApp(
-      title: 'Asset Portfolio',
+      title: 'Portfolio Tracker',
       // Above the Navigator, so dialogs and pushed routes are masked too.
       builder: (_, child) => ListenableBuilder(
         listenable: controller,

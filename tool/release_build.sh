@@ -4,12 +4,12 @@
 # names the working copy or the home directory.
 #
 #   tool/release_build.sh [linux] [apk] [appbundle]   (default: linux)
-#   BUILD_DIR=/tmp/asset_portfolio   where to clone and build
+#   BUILD_DIR=/tmp/portfolio-tracker  where to clone and build
 #   OFFLINE=1                        resolve packages from the local pub cache
 set -euo pipefail
 
 src=$(git -C "$(dirname "$0")/.." rev-parse --show-toplevel)
-out=${BUILD_DIR:-/tmp/asset_portfolio}
+out=${BUILD_DIR:-/tmp/portfolio-tracker}
 targets=("${@:-linux}")
 
 if [ -e "$out" ]; then

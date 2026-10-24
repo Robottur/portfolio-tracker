@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:asset_portfolio/app/app_controller.dart';
-import 'package:asset_portfolio/app/device_prefs.dart';
-import 'package:asset_portfolio/main.dart';
-import 'package:asset_portfolio/ui/home_shell.dart';
-import 'package:asset_portfolio/ui/privacy.dart';
+import 'package:portfolio_tracker/app/app_controller.dart';
+import 'package:portfolio_tracker/app/device_prefs.dart';
+import 'package:portfolio_tracker/main.dart';
+import 'package:portfolio_tracker/ui/home_shell.dart';
+import 'package:portfolio_tracker/ui/privacy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';

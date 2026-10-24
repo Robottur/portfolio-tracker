@@ -1,4 +1,4 @@
-import 'package:asset_portfolio/ui/privacy.dart';
+import 'package:portfolio_tracker/ui/privacy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

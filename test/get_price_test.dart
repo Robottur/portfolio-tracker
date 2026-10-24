@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:asset_portfolio/app/app_controller.dart';
-import 'package:asset_portfolio/app/device_prefs.dart';
-import 'package:asset_portfolio/main.dart';
+import 'package:portfolio_tracker/app/app_controller.dart';
+import 'package:portfolio_tracker/app/device_prefs.dart';
+import 'package:portfolio_tracker/main.dart';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
