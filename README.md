@@ -25,7 +25,9 @@ a tracker, not a trading tool: there is no cash balance.
 
 ## Build
 
-Toolchain: Flutter 3.47.7 (Dart 3.13.5).
+Toolchain: Flutter 3.47.7 (Dart 3.13.5). Android builds need JDK 17 or 21:
+Gradle 9.3.1 cannot run on newer Java ("Unsupported class file major
+version"). Point Flutter at one with `flutter config --jdk-dir=<jdk-path>`.
 
     flutter pub get
     flutter analyze && flutter test
